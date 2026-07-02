@@ -4,15 +4,14 @@
 
 # TitanVault
 
-**A turnkey, fully-local AI workstation engineered for the AMD Ryzen AI Max+ 395.**
+**A fully-local AI workstation for AMD Ryzen AI Max+ 395 (Strix Halo).**
 
-One command turns a 395 mini-PC into a complete AI stack — LLM inference, voice, document parsing, browser automation, agents, and monitoring — all running on-device, zero cloud, zero data egress.
+One command turns a Strix Halo mini-PC into a complete on-device AI stack — LLM inference, voice, document parsing, browser automation, AI agents — all running locally, no cloud, no API keys.
 
-[![Build](https://img.shields.io/github/actions/workflow/status/OWNER/TitanVault/build-images.yml?style=flat-square&label=build)](https://github.com/OWNER/TitanVault/actions)
-[![License](https://img.shields.io/github/license/OWNER/TitanVault?style=flat-square)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/OWNER/TitanVault?style=flat-square)](https://github.com/OWNER/TitanVault/stargazers)
-[![Last Commit](https://img.shields.io/github/last-commit/OWNER/TitanVault?style=flat-square)](https://github.com/OWNER/TitanVault/commits)
-[![Built for AMD](https://img.shields.io/badge/Built_for-AMD_Ryzen_AI_Max%2B395-ED1C24?style=flat-square&logo=amd&logoColor=white)](https://www.amd.com/en/products/processors/laptop/ryzen/ai-300-series.html)
+[![License](https://img.shields.io/github/license/kaka86mm/TitanVault?style=flat-square)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/kaka86mm/TitanVault?style=flat-square)](https://github.com/kaka86mm/TitanVault/stargazers)
+[![Last Commit](https://img.shields.io/github/last-commit/kaka86mm/TitanVault?style=flat-square)](https://github.com/kaka86mm/TitanVault/commits)
+[![Strix Halo](https://img.shields.io/badge/AMD-Strix_Halo_(gfx1151)-ED1C24?style=flat-square&logo=amd&logoColor=white)](https://www.amd.com/en/products/processors/laptop/ryzen/ai-300-series/amd-ryzen-ai-max-plus-395.html)
 
 **English** · [简体中文](./readme/zh_HANS.md)
 
@@ -20,197 +19,209 @@ One command turns a 395 mini-PC into a complete AI stack — LLM inference, voic
 
 <div align="center">
 
-**🔧 Zero-config · 📦 Out-of-the-box · 🖥️ 100% Local · 🔒 Zero data egress**
+**🔧 One-command install · 📦 Zero post-setup · 🖥️ 100% on-device · 🔒 No data leaves your machine**
 
 </div>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./readme/portal-dashboard.png">
-  <img src="./readme/portal-dashboard.png" width="800" alt="TitanVault Portal Dashboard">
+  <img src="./readme/portal-dashboard.png" width="800" alt="TitanVault Portal">
 </picture>
 
 ---
 
-## ✨ What's Inside
+## What is this
 
-| Capability | What it does | Powered by |
+TitanVault is an open-source AI workstation distribution designed specifically for the **AMD Ryzen AI Max+ 395** (codename *Strix Halo*, GPU *gfx1151* / Radeon 8060S). It leverages the APU's 128 GB unified memory and 40 RDNA 3.5 compute units to run a **35B parameter LLM fully on-device**, along with speech, vision, document processing, browser automation, and AI agents — all behind a unified web portal.
+
+No OpenAI API key. No cloud inference. No data sent to third parties.
+
+## ✨ Capabilities
+
+| | Capability | Details | Stack |
+|---|---|---|---|
+| 🧠 | **LLM Inference** | Qwen3.6-35B-A3B, full GPU offload, multimodal (text + vision) | llama.cpp → Vulkan |
+| 🎙️ | **Speech** | Real-time ASR · Neural TTS · Meeting transcription with diarization | SenseVoice · Kokoro · Aham Voice |
+| 📄 | **Document AI** | PDF parsing: layout analysis + OCR + table extraction | MinerU (ROCm) |
+| 🎨 | **Image Generation** | Stable Diffusion / SDXL | ComfyUI (ROCm) |
+| 🤖 | **AI Agents** | Ops agent (Docker/systemd management) · Coding agent · Cron scheduling | Hermes · OpenSquilla |
+| 🌐 | **Browser Automation** | AI-driven headless Chrome: click, type, navigate, read pages, solve captchas | browser-use + CDP |
+| 📚 | **Productivity Apps** | Knowledge base (RAG) · Self-hosted Git · File manager · Meta-search | Open Notebook · Gitea · Filebrowser · SearXNG |
+| 📊 | **Observability** | 18 services auto-monitored · Real-time system metrics | Uptime Kuma · Glances |
+
+All services are unified under a **Caddy reverse proxy** and presented through a custom **TitanVault Portal** (React).
+
+## 🔥 Why TitanVault
+
+Setting up a local AI stack normally means: spend a weekend debugging ROCm/Vulkan drivers, manually configure a dozen services, wire up authentication, and still end up with something fragile. TitanVault eliminates all of that:
+
+- **One command, fully configured** — `bash install.sh` handles GPU drivers, Docker, image builds, model downloads, service orchestration, password generation, and monitoring seeding. Walk away, come back in an hour, everything's running.
+- **Nothing to configure after install** — Open Notebook gets 4 model types auto-assigned; Uptime Kuma gets 18 monitors pre-loaded; Hermes ops agent ships with hardware-specific knowledge. Open the portal and start using it.
+- **Runs entirely offline** — All inference happens on your GPU. After the initial model download, no internet connection is required.
+- **Private by architecture** — Passwords are auto-generated and locked down. Caddy handles auth injection. Your conversations, documents, and voice data stay on your machine.
+- **Survives reinstalls** — The installer is idempotent with credential fingerprinting. Upgrade or reinstall without losing data or breaking configurations.
+
+## 🛠️ Original Components
+
+TitanVault isn't just glue around existing tools — it includes several **original open-source components** built specifically for this distribution:
+
+| Component | What it does | Source |
 |---|---|---|
-| 🧠 **LLM Inference** | Qwen3.6-35B full offload, multimodal (vision + text) | llama.cpp (Vulkan) |
-| 🎙️ **Speech** | ASR transcription · TTS synthesis · meeting minutes | SenseVoice · Kokoro · Aham Voice |
-| 📄 **Documents** | PDF parsing with layout + OCR + tables | MinerU (ROCm GPU) |
-| 🎨 **Images** | Stable Diffusion generation | ComfyUI (ROCm GPU) |
-| 🤖 **AI Agents** | Ops agent (manages Docker/systemd) · Coding agent | Hermes · OpenSquilla |
-| 🌐 **Browser Automation** | AI-driven Chrome: click, type, navigate, screenshot | browser-use + CDP |
-| 📚 **Apps** | Knowledge base · Git · File manager · Meta-search | Open Notebook · Gitea · Filebrowser · SearXNG |
-| 📊 **Monitoring** | 18 services auto-monitored · system resources | Uptime Kuma · Glances |
+| **[TitanVault Portal](images/titanvault-homepage/)** | Custom React dashboard: service cards with brand icons, AI assistant chat, LLM usage panel, real-time uptime | [`images/titanvault-homepage/`](images/titanvault-homepage/) |
+| **[Aham Voice](images/aham-voice-web/)** | Full-stack meeting intelligence: audio upload → transcription → speaker diarization → emotion detection → AI-generated meeting minutes (ROCm GPU) | [`images/aham-voice-web/`](images/aham-voice-web/) |
+| **[SenseVoice](images/sensevoice/)** | Lightweight ASR API service: real-time speech-to-text with emotion and event detection | [`images/sensevoice/`](images/sensevoice/) |
+| **[Token Usage API](images/token-usage-api/)** | LLM consumption tracker: aggregates LiteLLM spend logs into a clean dashboard | [`images/token-usage-api/`](images/token-usage-api/) |
+| **[API Discover](images/api-discover/)** | Auto-generated API explorer: discovers all services, tests endpoints, renders interactive docs | [`images/api-discover/`](images/api-discover/) |
 
-Everything is fronted by a **Caddy gateway** (:80) with a custom **TitanVault portal** — a React dashboard aggregating all service entries, an AI assistant, and a usage panel.
-
-## 🔥 Why This Exists
-
-Most "AI workstation" guides leave you cobbling together a dozen tools, debugging GPU drivers for days, and hand-configuring every service. **TitanVault is the opposite:**
-
-- **🔧 Fully automated** — One `bash install.sh` does everything: GPU drivers, Docker, image builds, model downloads, service orchestration, password generation, monitoring setup. Zero manual config.
-- **📦 Out of the box** — Open Notebook auto-configured with 4 model types; Uptime Kuma auto-seeded with 18 service monitors; Hermes ops agent pre-loaded with hardware knowledge. Nothing to "set up" after install.
-- **🖥️ 100% local** — All inference runs on your 395's GPU. No API keys, no cloud calls, no data leaving your machine. Works offline after first install.
-- **🔒 Private by design** — Passwords auto-generated, Caddy injects auth headers, `.env` locked to `600`. Your conversations, documents, and voice data never touch a third party.
-- **🔁 Reinstall-safe** — Idempotent installer with credential fingerprinting. Reinstall or upgrade without breaking existing data.
+Plus custom ROCm Dockerfiles for [MinerU](images/mineru-rocm/) and [ComfyUI](images/comfyui-rocm/) — adapted to run on gfx1151 where official CUDA images won't work.
 
 ## 🚀 Quick Start
 
 ```bash
-git clone https://github.com/OWNER/TitanVault.git
+git clone https://github.com/kaka86mm/TitanVault.git
 cd TitanVault
 bash install.sh
 ```
 
-The installer walks you through preset selection, auto-installs GPU drivers, pulls images, downloads models, and starts everything. A fresh install takes ~1 hour (30 min is model download). Reinstalls with cached images/models take ~15 min.
+The installer guides you through preset selection, installs GPU drivers, builds images, downloads models, and starts everything. First install: ~1 hour. Reinstalls with cached assets: ~15 minutes.
 
 <details>
 <summary><b>📋 Installation phases</b></summary>
 
-| Phase | What | Time | Interactive? |
+| Phase | What happens | Time | Needs you? |
 |---|---|---|---|
-| 0 | Hardware check (gfx1151 + Ubuntu) | 5s | No |
-| 1 | Config (preset / data dir / model source) + generate passwords | 2 min | **Yes** |
-| 2 | GPU drivers (GRUB + Mesa + Vulkan), one reboot | ~15 min | Reboot |
-| 3 | Docker + images (build ROCm + pull third-party + offline packs) | ~30 min | No |
-| 4 | Model download (35B + embed + rerank + ASR) | ~30 min | No |
-| 5 | Start (compile llama.cpp + compose up + hermes/opensquilla/chrome) | ~10 min | No |
-| 6 | Done — prints access URLs + passwords | instant | Save passwords |
+| 0 | Hardware verification (gfx1151 + Ubuntu) | 5s | No |
+| 1 | Interactive config: preset / data dir / model source | 2 min | **Yes** |
+| 2 | GPU drivers (GRUB + Mesa + Vulkan), reboots once | ~15 min | Reboot |
+| 3 | Docker images (build ROCm + pull + offline packs) | ~30 min | No |
+| 4 | Model download (35B + embedding + reranker + ASR) | ~30 min | No |
+| 5 | Compile llama.cpp → start all services + agents | ~10 min | No |
+| 6 | Print access URLs and passwords | instant | Save them |
 
 </details>
 
-## 🎛️ Three Presets
+## 🎛️ Presets
 
-| Preset | Includes | For |
+| Preset | What you get | Best for |
 |---|---|---|
-| **minimal** | LLM core (llama.cpp + LiteLLM + portal) | Just need a local LLM API |
-| **standard** | + Speech / Docs / Images (AI capability layer) | Need voice/doc/image AI |
-| **full** | + Apps + Monitoring + Agents + Browser automation | Complete workstation **(recommended)** |
+| **minimal** | LLM inference core (llama.cpp + LiteLLM + portal) | Just need a local LLM API endpoint |
+| **standard** | + Speech / Document / Image AI | Voice, PDF, image generation |
+| **full** | + Apps + Agents + Browser automation + Monitoring | Complete workstation **(recommended)** |
 
 ## 🏗️ Architecture
 
 ```mermaid
 flowchart TD
-    User["🖥️ Browser"]
-    User --> Caddy["Caddy :80<br/>Unified Gateway"]
+    User["🖥️ Browser"] --> Caddy["Caddy :80"]
 
-    subgraph Portal["TitanVault Portal (React)"]
-        Dashboard["Service Cards + AI Assistant + Usage"]
+    subgraph Portal["TitanVault Portal — original"]
+        Dashboard["Service cards · AI assistant · Usage panel"]
     end
     Caddy --> Portal
 
-    subgraph Native["Native systemd Services"]
-        LLM["llama.cpp :8082<br/>Qwen3.6-35B Vulkan GPU"]
-        Embed["llama-embed :8084<br/>Embedding"]
-        Rerank["llama-rerank :8083<br/>Reranker"]
-        Hermes["Hermes :8642/9119<br/>Ops Agent + Browser"]
-        Squilla["OpenSquilla :18791<br/>Coding Agent"]
-        Chrome["Chrome CDP :9222<br/>Browser Automation"]
+    subgraph Native["Native systemd (GPU-direct)"]
+        LLM["llama.cpp :8082<br/>Qwen3.6-35B · Vulkan · full offload"]
+        Embed["llama-embed :8084"]
+        Rerank["llama-rerank :8083"]
+        Hermes["Hermes :8642 · :9119<br/>Ops agent + browser tools"]
+        Squilla["OpenSquilla :18791<br/>Coding agent"]
+        Chrome["Chrome CDP :9222<br/>Headless browser"]
     end
 
-    subgraph Docker["Docker Containers (31)"]
+    subgraph Docker["Docker (31 containers)"]
         LiteLLM["LiteLLM :4000<br/>OpenAI-compatible API"]
-        PG[("PostgreSQL<br/>+ pgvector")]
+        PG[("PostgreSQL + pgvector")]
         Redis[("Redis")]
         Qdrant[("Qdrant")]
-        AI["SenseVoice · Kokoro · ComfyUI<br/>MinerU · Aham Voice"]
-        Apps["Open Notebook · Gitea<br/>Filebrowser · SearXNG"]
-        Monitor["Uptime Kuma · Glances"]
+        ROCm["MinerU · ComfyUI · Aham Voice<br/>ROCm GPU"]
+        CPU["SenseVoice · Kokoro<br/>Open Notebook · Gitea · SearXNG"]
+        Obs["Uptime Kuma · Glances"]
     end
 
-    Caddy --> LiteLLM
-    Caddy --> Hermes
-    LiteLLM --> LLM
-    LiteLLM --> Embed
-    LiteLLM --> Rerank
-    Hermes --> Chrome
-    Hermes --> LiteLLM
-    Hermes --> Docker
+    Caddy --> LiteLLM & Hermes
+    LiteLLM --> LLM & Embed & Rerank
+    Hermes --> Chrome & LiteLLM & Docker
     LiteLLM --> PG
 ```
 
-## 📡 Key Ports
+## 📡 Ports
 
-| Port | Service | Description |
+| Port | Service | Note |
 |---|---|---|
-| **80** | Caddy + TitanVault | Unified portal entry |
-| 4000 | LiteLLM | OpenAI-compatible API (chat / embedding / rerank) |
-| 8082 | llama-main | Qwen3.6-35B inference (native systemd) |
-| 9119 | Hermes Dashboard | Ops Agent Web UI (general chat) |
-| 8642 | Hermes Gateway | Ops Agent API (portal AI assistant) |
-| 18791 | OpenSquilla | Coding Agent Gateway |
-| 9222 | Chrome CDP | Browser automation backend |
+| **80** | Caddy + TitanVault Portal | Main entry point |
+| 4000 | LiteLLM | OpenAI-compatible API |
+| 8082 | llama.cpp main | Qwen3.6-35B (Vulkan GPU) |
+| 9119 | Hermes Dashboard | Agent Web UI |
+| 8642 | Hermes Gateway | Agent API (portal AI assistant) |
+| 9222 | Chrome CDP | Browser automation |
 | 9991 | SenseVoice | ASR API |
-| 8188 | ComfyUI | Stable Diffusion |
-| 8090 | MinerU Web | PDF parsing |
-| 3001 | Uptime Kuma | Service monitoring |
+| 8188 | ComfyUI | Image generation |
+| 8090 | MinerU | PDF parsing |
 
 <details>
-<summary><b>Full port table (19 services)</b></summary>
+<summary><b>All ports (24 services)</b></summary>
 
 | Port | Service |
 |---|---|
-| 80 | Caddy + TitanVault portal |
+| 80 | Caddy + TitanVault Portal |
 | 4000 | LiteLLM |
-| 8082 / 8084 / 8083 | llama.cpp main / embed / rerank |
-| 9119 / 8642 | Hermes dashboard / gateway |
+| 8082 / 8084 / 8083 | llama.cpp (main / embed / rerank) |
+| 9119 / 8642 | Hermes (dashboard / gateway) |
 | 18791 | OpenSquilla |
 | 9222 | Chrome CDP |
-| 9991 / 8081 | SenseVoice ASR / Kokoro TTS |
+| 9991 / 8081 | SenseVoice / Kokoro TTS |
 | 8765 | Aham Voice (meeting minutes) |
-| 8090 / 18080 | MinerU web / API |
+| 8090 / 18080 | MinerU (web / API) |
 | 8188 | ComfyUI |
 | 8088 / 5055 | Open Notebook |
 | 3002 | Gitea |
 | 8085 / 8087 | Filebrowser / SearXNG |
-| 3001 | Uptime Kuma |
-| 61208 | Glances |
+| 3001 / 61208 | Uptime Kuma / Glances |
 
 </details>
 
-## 🔧 Hardware Requirements
+## 🔧 Hardware
 
-| Requirement | Spec |
+| | Spec |
 |---|---|
-| **APU** | AMD Ryzen AI Max+ 395 (Radeon 8060S / gfx1151) |
-| OS | Ubuntu 24.04 / 26.04 LTS |
-| RAM | 64 GB+ (for 35B full offload) |
-| Storage | 120 GB+ (models 31G + images 70G + data) |
-| Network | Internet for first install (images + models) |
+| **APU** | AMD Ryzen AI Max+ 395 (Strix Halo / gfx1151 / Radeon 8060S) |
+| OS | Ubuntu 24.04 or 26.04 LTS |
+| RAM | 64 GB+ (128 GB recommended for 35B full offload) |
+| Storage | 120 GB+ free |
+| Network | Internet required for first install only |
 
-> Only supports the 395. The installer checks GPU model in Phase 0 and rejects mismatches. Other GPUs (NVIDIA / Intel / other AMD) are out of scope.
+> Exclusively targets the Ryzen AI Max+ 395. The installer verifies the GPU in Phase 0. Other hardware is not supported.
 
-## 📁 Repository Structure
+## 📁 Repository
 
 ```
 TitanVault/
-├── install.sh              # One-command installer (Phase 0-6)
-├── compose.yaml            # Compose include entry (7-layer profiles)
-├── compose/                # Layered orchestration
-├── images/                 # Custom image sources (titanvault/sensevoice/mineru-rocm/...)
-├── native/                 # Native systemd services (llama.cpp/hermes/opensquilla/chrome-cdp)
-├── config/                 # Config templates (.env.example/caddy/litellm/hermes)
-├── presets/                # minimal/standard/full toggles
-├── hardware/               # aimax-395 specific params
-├── models/                 # Model manifest + download sources
-├── scripts/                # download-models.sh / setup-kuma.sh / ...
-├── images/offline/         # Pre-packaged offline images
-└── docs/                   # User documentation
+├── install.sh                # Installer (6 phases, resumable)
+├── compose.yaml              # Docker Compose entry (7 profile layers)
+├── compose/                  # Layered service definitions
+├── images/                   # Original component sources (portal, ASR, voice, ...)
+├── native/                   # systemd services (llama.cpp, Hermes, OpenSquilla, Chrome)
+├── config/                   # Templates (.env, Caddy, LiteLLM, Hermes)
+├── presets/                  # minimal / standard / full
+├── hardware/                 # Strix Halo-specific parameters
+├── models/                   # Model manifest + download config
+├── scripts/                  # Setup automation (models, kuma, notebook, ...)
+└── docs/                     # Documentation
 ```
 
-## 📖 Documentation
+## 📖 Docs
 
-- **[Quick Start](docs/getting-started.md)** — From zero to running
-- **[Service Catalog](docs/what-it-installs.md)** — Complete service & port list
-- **[Operations](docs/operations.md)** — Daily ops & service management
-- **[Troubleshooting](docs/troubleshooting.md)** — Common issues & fixes
-- **[Customization](docs/customize.md)** — Adjust models / ports / passwords
+| Doc | Contents |
+|---|---|
+| [Quick Start](docs/getting-started.md) | Install & first run |
+| [Service Catalog](docs/what-it-installs.md) | Every service, port, and model |
+| [Operations](docs/operations.md) | Day-to-day management |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues & fixes |
+| [Customization](docs/customize.md) | Models, ports, passwords |
 
 ## 🤝 Contributing
 
-See **[CONTRIBUTING.md](CONTRIBUTING.md)**. This project only targets the AMD Ryzen AI Max+ 395 — PRs adding other GPU support can't be tested and will be declined.
+See [CONTRIBUTING.md](CONTRIBUTING.md). This project targets **only** the Ryzen AI Max+ 395 — PRs for other GPUs can't be tested and won't be accepted.
 
 ## 📜 License
 
@@ -219,15 +230,15 @@ Apache-2.0 — see [LICENSE](LICENSE). Third-party components retain their origi
 ## ⭐ Star History
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=OWNER/TitanVault&type=Date&theme=dark">
-  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=OWNER/TitanVault&type=Date">
-  <img alt="Star History" src="https://api.star-history.com/svg?repos=OWNER/TitanVault&type=Date">
+  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kaka86mm/TitanVault&type=Date&theme=dark">
+  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kaka86mm/TitanVault&type=Date">
+  <img alt="Star History" src="https://api.star-history.com/svg?repos=kaka86mm/TitanVault&type=Date">
 </picture>
 
 ---
 
 <div align="center">
 
-Built with ❤️ on top of [llama.cpp](https://github.com/ggml-org/llama.cpp) · [LiteLLM](https://github.com/BerriAI/litellm) · [Hermes](https://github.com/NousResearch/hermes-agent) · [browser-use](https://github.com/browser-use/browser-use) · [MinerU](https://github.com/opendatalab/MinerU) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
+Built on [llama.cpp](https://github.com/ggml-org/llama.cpp) · [LiteLLM](https://github.com/BerriAI/litellm) · [Hermes](https://github.com/NousResearch/hermes-agent) · [browser-use](https://github.com/browser-use/browser-use) · [MinerU](https://github.com/opendatalab/MinerU) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
 
 </div>
