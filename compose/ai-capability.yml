@@ -1,0 +1,292 @@
+# compose/ai-capability.yml
+# 第二档: AI 能力 (standard preset 起)
+#   sensevoice      原创 ASR (转写+情感+事件, CPU), 镜像在 images/sensevoice/
+#   kokoro-tts      文字转语音 (CPU)
+#   mineru-web      PDF 解析 Web 产品 (6 容器: frontend/backend/worker/redis/minio + mineru-api GPU)
+#                   镜像本地 build (mineru-api, images/mineru-rocm/, 官方 rocm/pytorch base)
+#   aham-voice-web  录音转写+说话人+情绪+会议纪要 Web 应用 (GPU), 镜像在 images/aham-voice-web/
+#   mcpjungle       MCP 注册中心
+#
+# MODEL_SOURCE 是全局变量: sensevoice 读它决定模型从 modelscope(国内) 还是 huggingface(全球) 拉。
+# 注意: mineru / aham-voice-web 的模型由各自应用自管 (modelscope 原生 org, 不读 MODEL_SOURCE)。
+services:
+  sensevoice:
+    build: ../images/sensevoice
+    image: mozin/sensevoice:latest
+    profiles: [ai-capability]
+    restart: unless-stopped
+    environment:
+      MODEL_DIR: /data/models/asr
+      MODEL_SOURCE: ${MODEL_SOURCE:-modelscope}
+      DEVICE: cpu
+      NCPU: "8"
+      PORT: "9991"
+    volumes:
+      - ${DATA_DIR:-/data}/models/asr:/data/models/asr
+    ports: ["9991:9991"]
+    networks: [mozin]
+    logging: &id001
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  kokoro-tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    profiles: [ai-capability]
+    restart: unless-stopped
+    ports: ["8081:8880"]
+    networks: [mozin]
+    logging: *id001
+
+  # ════════════════════════════════════════════════════════════════════
+  # MinerU Web — PDF 解析 Web 产品 (host-inference 模式, 与生产一致)
+  # 6 容器分两组: GPU 推理 (mineru-api, 1) + 业务层 (5, lpdswing 官方镜像)。
+  # 业务层经 host.docker.internal:18080 调宿主网络上的 mineru-api。
+  # 业务容器在独立 mineru-network (自包含依赖, nginx 用 backend/minio 服务名反代)。
+  # mineru-api 在 mozin 网络 (供发行版其它服务直连推理端点) + 共享 host 网络 (业务层经 host-gateway 访问)。
+  # 详见 images/mineru-rocm/BUILD.md。
+  # ════════════════════════════════════════════════════════════════════
+  mineru-api:
+    # GPU 推理后端 (mineru[core]==3.4.0, 官方 rocm/pytorch base)。镜像本地 build,
+    # 见 images/mineru-rocm/BUILD.md。生产已验证处理真实 PDF (Layout/OCR/表格全跑通)。
+    build:
+      context: ../images/mineru-rocm
+      dockerfile: Dockerfile.rocm
+      args:
+        ROCM_BASE: rocm/pytorch:rocm7.2.3_ubuntu22.04_py3.10_pytorch_release_2.9.1
+    image: mineru-rocm:latest
+    profiles: [ai-capability]
+    restart: unless-stopped
+    # ROCm GPU 透传 (gfx1151, HIP 走 cuda 兼容层)
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add: ["video"]
+    ipc: host
+    environment:
+      # torch ROCm 走 CUDA 兼容层 (gfx1151 已验证 torch.cuda.is_available()=True)
+      MINERU_DEVICE_MODE: cuda
+      MINERU_TOOLS_CONFIG_JSON: /models/mineru.json
+    volumes:
+      - ${DATA_DIR:-/data}/mineru/rocm-models:/models
+      # mineru.json (指定本地模型路径, 避免每次重下4.6GB模型) + patch 已 COPY 进镜像
+      - ../config/mineru/mineru.json:/models/mineru.json:ro
+    # 端口 18080→8000 (mineru-api CMD 是 --port 8000, 生产已验证)
+    # 业务层 backend/worker 经 host.docker.internal:18080 调它
+    ports: ["18080:8000"]
+    # healthcheck 显式写在 compose (Dockerfile 里也有, 但 compose config 不显示继承的;
+    # 显式写让 docker compose ps / 监控可见健康状态)。curl 在 Dockerfile 里已装。
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 120s
+    networks: [mozin]
+    logging: *id001
+
+  mineru-web-frontend:
+    # lpdswing 官方前端 (nginx, 反代 backend + minio)。配置在 config/mineru/nginx.conf
+    image: lpdswing/mineru-web-frontend:v3.3.1
+    profiles: [ai-capability]
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ../config/mineru/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports: ["8090:80"]
+    depends_on:
+      - mineru-web-backend
+    # 双网络: mozin 让 caddy 能反代 frontend; mineru-web 让 frontend 经 nginx 反代到 backend/minio
+    networks: [mozin, mineru-web]
+    logging: *id001
+
+  mineru-web-backend:
+    # lpdswing 官方后端 (FastAPI, sqlite 任务库)。调 host.docker.internal:18080 推理。
+    # parsed.py 是生产验证的补丁 (533行), 覆盖镜像内 app/api/parsed.py (修复解析展示)。
+    image: lpdswing/mineru-web-backend:v3.3.1
+    profiles: [ai-capability]
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_HOST: mineru-web-redis
+      # MINIO_ENDPOINT 必须是浏览器+容器都能访问的宿主地址 (install.sh 渲染 ${HOST_IP})
+      MINIO_ENDPOINT: ${HOST_IP:?set HOST_IP}:9000
+      MINIO_MDS_BUCKET: mds
+      DATABASE_URL: sqlite:////data/mineru.db
+      # 推理指向宿主网络的 mineru-api (host-inference 模式)
+      MINERU_API_URL: http://host.docker.internal:18080
+      MINERU_API_HYBRID_EFFORT: ${MINERU_API_HYBRID_EFFORT:-high}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports: ["8089:8000"]
+    volumes:
+      - ${DATA_DIR:-/data}/mineru-web/backend:/data
+      - ../config/mineru/parsed.py:/app/app/api/parsed.py:ro
+    depends_on:
+      mineru-web-redis:
+        condition: service_healthy
+      mineru-web-minio:
+        condition: service_healthy
+    networks: [mineru-web]
+    logging: *id001
+
+  mineru-web-worker:
+    # celery worker (异步解析)。与 backend 同镜像, command 覆盖。
+    image: lpdswing/mineru-web-backend:v3.3.1
+    profiles: [ai-capability]
+    restart: unless-stopped
+    command: python3 run_worker.py
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_HOST: mineru-web-redis
+      MINIO_ENDPOINT: ${HOST_IP:?set HOST_IP}:9000
+      MINIO_MDS_BUCKET: mds
+      DATABASE_URL: sqlite:////data/mineru.db
+      MINERU_API_URL: http://host.docker.internal:18080
+      MINERU_API_HYBRID_EFFORT: ${MINERU_API_HYBRID_EFFORT:-high}
+      WORKER_CONCURRENCY: ${MINERU_WORKER_CONCURRENCY:-1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${DATA_DIR:-/data}/mineru-web/backend:/data
+    depends_on:
+      mineru-web-redis:
+        condition: service_healthy
+      mineru-web-minio:
+        condition: service_healthy
+      mineru-web-backend:
+        condition: service_started
+    networks: [mineru-web]
+    logging: *id001
+
+  mineru-web-redis:
+    # mineru-web 专用 redis (无密码, 独立于 infra redis; 仅内网, 不与发行版共享避免任务串扰)
+    image: redis:latest
+    profiles: [ai-capability]
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ${DATA_DIR:-/data}/mineru-web/task-queue:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks: [mineru-web]
+    logging: *id001
+
+  mineru-web-minio:
+    # mineru-web 专用 minio (对象存储, 存上传的 PDF + 解析产物)。独立于发行版其它存储。
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    profiles: [ai-capability]
+    restart: unless-stopped
+    ports: ["9000:9000", "9001:9001"]
+    environment:
+      TZ: Asia/Shanghai
+      MINIO_ROOT_USER: ${MINERU_MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINERU_MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - ${DATA_DIR:-/data}/mineru-web/minio:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks: [mineru-web]
+    logging: *id001
+
+  aham-voice-web:
+    # 录音转写 + 说话人分离 + 声学情绪 + 会议纪要 Web 应用 (MIT, 用户原创项目)。
+    # 与 sensevoice 互补: sensevoice 是裸 ASR API (给别的服务调), aham-voice-web 是
+    # 面向终端用户的完整 Web 产品 (含 UI/说话人/纪要)。镜像本地 build (ROCm, ~40GB 基镜像),
+    # 见 images/aham-voice-web/BUILD.md。
+    build:
+      context: ../images/aham-voice-web
+      dockerfile: Dockerfile.rocm
+      args:
+        ROCM_BASE: rocm/pytorch:rocm7.2.3_ubuntu22.04_py3.10_pytorch_release_2.9.1
+    image: aham-voice-web:rocm
+    profiles: [ai-capability]
+    restart: unless-stopped
+    # ROCm GPU 透传 (与 mineru-api 完全一致: gfx1151, HIP 走 cuda 兼容层)
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add: ["video"]
+    ipc: host
+    environment:
+      AHAMVOICE_ASR_DEVICE: cuda
+      AHAMVOICE_HOME: /data
+      AHAMVOICE_MODELS_DIR: /models
+      AHAMVOICE_PORT: "8765"
+      # LLM: 指向发行版 LiteLLM (复用本机 llama.cpp 35B), 会议纪要零配置走本机
+      LLM_API_BASE: http://litellm:4000/v1
+      LLM_API_KEY: ${LITELLM_MASTER_KEY:?must be set}
+      LLM_MODEL: ${LLM_MODEL_NAME:-Qwen3.6-35B-A3B}
+      # 密码门 (空=局域网默认开放, 与发行版其它服务风格一致)
+      AHAMVOICE_ACCESS_PASSWORD: ${AHAMVOICE_ACCESS_PASSWORD:-}
+    volumes:
+      - ${DATA_DIR:-/data}/ahamvoice/data:/data
+      # ASR 模型 (~4GB, 首次启动自动从 modelscope 拉) 挂全局模型库统一管理
+      - ${DATA_DIR:-/data}/models/ahamvoice:/models
+    ports: ["8765:8765"]
+    depends_on:
+      - litellm
+    networks: [mozin]
+    logging: *id001
+
+  mcpjungle:
+    # latest-stdio: 含 npx/uvx 运行时, 支持 stdio 类 MCP server (官方默认 tag)
+    image: mcpjungle/mcpjungle:latest-stdio
+    profiles: [ai-capability]
+    restart: unless-stopped
+    environment:
+      # 用 infra postgres (避免 SQLite, 生产可靠)
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?must be 
+        set}@postgres:5432/mcpjungle
+    volumes:
+      - ${DATA_DIR:-/data}/mcpjungle:/data
+    # 容器内默认监听 8080 (非 8000)
+    ports: ["8086:8080"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [mozin]
+    logging: *id001
+
+  # === ComfyUI: Stable Diffusion 图像生成 (ROCm GPU, gfx1151) ===
+  # 1.22 生产原用 ghcr.io/ai-dock/comfyui (CUDA), 在 395 报 "Found no NVIDIA driver"
+  # 出不了图。本镜像基于 rocm/pytorch (HIP 后端), 才能真用 395 GPU。
+  # 镜像: images/comfyui-rocm/Dockerfile.rocm (install.sh Phase3 build)。
+  # 模型不打进镜像, volume 挂 /models, 用户放置 SD checkpoint/vae/lora。
+  comfyui:
+    image: comfyui-rocm:latest
+    profiles: [ai-capability]
+    restart: unless-stopped
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add: ["video"]
+    ipc: host
+    environment:
+      # torch ROCm 走 HIP 兼容层 (gfx1151 已验证 torch.cuda.is_available()=True, 120GB VRAM)
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ${DATA_DIR:-/data}/comfyui/models:/models
+      - ${DATA_DIR:-/data}/comfyui/output:/opt/ComfyUI/output
+    ports: ["8188:8188"]
+    networks: [mozin]
+    logging: *id001
+
+networks:
+  mozin:
+    driver: bridge
+  # mineru-web 业务层专用网络 (frontend/backend/worker/redis/minio 自包含)
+  # nginx 用 backend/minio 服务名反代, 必须同网络。mineru-api 不在此网络 (走 host-gateway)。
+  mineru-web:
+    driver: bridge

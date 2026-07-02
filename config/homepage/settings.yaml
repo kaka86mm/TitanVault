@@ -1,0 +1,30 @@
+# config/homepage/settings.yaml
+# homepage 全局设置 (标题/布局/主题/语言)
+---
+title: Mozin Workstation
+language: zh
+# 5列布局: 基础设施/AI能力/应用/监控/Agent
+layout:
+  基础设施:
+    style: row
+    columns: 5
+  AI 能力:
+    style: row
+    columns: 6
+  应用:
+    style: row
+    columns: 5
+  监控与运维:
+    style: row
+    columns: 2
+  Agent:
+    style: row
+    columns: 5
+headerStyle: boxed
+# 顶部快捷链接 (右上角)
+quicklaunch:
+  searchDescriptions: true
+  hideInternetSearch: true
+# 主题
+color: zinc
+target: _blank

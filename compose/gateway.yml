@@ -1,0 +1,113 @@
+# compose/gateway.yml
+# 第一档: 统一网关 + LLM 路由 (minimal preset 起)
+#   caddy       :80 统一入口, 反代各服务 (配置见 config/caddy/)
+#   homepage    门户门面, 装完即见所有服务卡片
+#   litellm     LLM 路由, 指向本机原生 llama.cpp (8082/8084)
+#   token-usage-api  原创: LiteLLM 用量聚合 (镜像在 images/token-usage-api/)
+#
+# 网络策略 (395 多子网优化): caddy 走 bridge(mozin) 网络, 用服务名 DNS 反代各服务,
+# 避免把内部服务端口暴露到宿主所有子网。访问宿主原生 llama.cpp 用 host-gateway。
+services:
+  caddy:
+    image: caddy:2-alpine
+    profiles: [gateway]
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      # 注入到 /llm/* 反代请求 (TitanVault 前端无需自己管 key)
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?must be set}
+      # 注入到 /hermes/* 反代请求 (TitanVault AI 助手走 Hermes gateway)
+      HERMES_API_SERVER_KEY: ${HERMES_API_SERVER_KEY:?must be set}
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    volumes:
+      - ../config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${DATA_DIR:-/data}/caddy:/data
+      - ${DATA_DIR:-/data}/caddy-config:/config
+    networks: [mozin]
+    logging: &id001
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  # TitanVault: React 门户门面 (替代 gethomepage/homepage)。
+  # 服务展示 + 资源监控 + AI 助手 + 推理面板。build 静态文件 + caddy 托管。
+  # 源码: images/titanvault-homepage/ (Vite + React)。
+  titanvault:
+    build: ../images/titanvault-homepage
+    image: mozin/titanvault:latest
+    profiles: [gateway]
+    restart: unless-stopped
+    environment:
+      # caddy 层注入到 /llm/* 请求 (前端 InfPanel/AI助手无需自己管 key)
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?must be set}
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    networks: [mozin]
+    logging: *id001
+
+  litellm:
+    # main-stable 已废弃 (官方 2026-06-30 前迁移到 :latest), 改用 latest
+    image: ghcr.io/berriai/litellm:latest
+    profiles: [gateway]
+    restart: unless-stopped
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?must be set}
+      # postgres 在同一 bridge 网络, 用服务名 DNS 解析。
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?must be 
+        set}@postgres:5432/litellm
+    volumes:
+      - ../config/litellm/config.yaml:/app/config.yaml:ro
+    # 必须显式 --config: 否则 litellm 会忽略挂载的 config.yaml (官方 issue #2889)
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    # 发布 4000 给所有子网 (0.0.0.0): LiteLLM admin UI (/ui/) 用绝对路径资源,
+    # 子路径反代会白屏, 改端口直连 + 门户 /go/litellm 跳转。OpenAI SDK 也直连此端口。
+    ports: ["4000:4000"]
+    # host-gateway: litellm 配置指向的原生 llama.cpp (8082/8084) 在宿主机,
+    # 经 host-gateway 从容器内访问宿主机的 systemd 服务。
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [mozin]
+    logging: *id001
+
+  token-usage-api:
+    build: ../images/token-usage-api
+    image: mozin/token-usage-api:latest
+    profiles: [gateway]
+    restart: unless-stopped
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?must be set}
+      # litellm 在同 bridge 网络, 直接用服务名。
+      LITELLM_BASE_URL: http://litellm:4000
+      USAGE_API_PORT: "8090"
+    depends_on:
+      - litellm
+    networks: [mozin]
+    logging: *id001
+
+  # API 自动发现 + 指南页: 扫 docker 容器发现所有服务, 探测 OpenAPI,
+  # 提供健康检查/测试代理 (解决浏览器 CORS), 前端动态渲染。
+  # 新装服务只要暴露端口就自动出现在指南里, 无需改配置。
+  api-discover:
+    build: ../images/api-discover
+    image: mozin/api-discover:latest
+    profiles: [gateway]
+    restart: unless-stopped
+    environment:
+      API_DISCOVER_PORT: "8098"
+    volumes:
+      # docker.sock: 扫描运行中的容器做自动发现
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # host-gateway: 经宿主端口探测各服务健康 (所有服务都发布 0.0.0.0 端口)
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    networks: [mozin]
+    logging: *id001
+
+networks:
+  mozin:
+    driver: bridge

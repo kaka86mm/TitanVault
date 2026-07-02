@@ -1,0 +1,51 @@
+# aham-voice-web (ROCm 版) — 录音转写 + 说话人分离 + 声学情绪 + 会议纪要
+# AMD gfx1151 (Radeon 8060S / Ryzen AI Max+ 395)。基镜像: 官方 rocm/pytorch
+# (rocm7.2.3 + torch 2.9.1, gfx1151 已验证可用, AMD Verified Publisher)。
+#
+# 构建前置见同目录 BUILD.md。镜像本地 build, 不进 CI / 不推 GHCR (与 mineru-rocm 同策略)。
+ARG ROCM_BASE=rocm/pytorch:rocm7.2.3_ubuntu22.04_py3.10_pytorch_release_2.9.1
+FROM ${ROCM_BASE}
+
+# 基镜像已有 torch + ROCm runtime, 只补音频系统依赖。
+# 国内构建慢可传 --build-arg USE_CN_MIRROR=1 走阿里云源。
+ARG USE_CN_MIRROR=0
+RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
+      sed -i 's|http://archive.ubuntu.com|https://mirrors.aliyun.com|g; s|http://security.ubuntu.com|https://mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true; \
+      sed -i 's|http://archive.ubuntu.com|https://mirrors.aliyun.com|g; s|http://security.ubuntu.com|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/*.list 2>/dev/null || true; \
+      pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/; \
+      pip config set global.trusted-host mirrors.aliyun.com; \
+    fi && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg libsndfile1 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 装 funasr + ASR 依赖。
+# 不装 requirements-asr.txt: 它的版本 pin 按 Python 3.12 锁, 而基镜像是 3.10
+# (networkx==3.6.1 等要求 >=3.11 会失败)。让 funasr 自由解决依赖 (上游已验证)。
+COPY backend/requirements.txt ./backend/
+RUN pip install --no-cache-dir -r backend/requirements.txt && \
+    pip install --no-cache-dir funasr modelscope librosa soundfile scipy scikit-learn && \
+    pip install --no-cache-dir addict datasets simplejson
+
+COPY backend/ ./backend/
+COPY frontend/dist/ ./frontend/dist/
+
+ENV PATH="/opt/conda/bin:$PATH" \
+    AHAMVOICE_HOST=0.0.0.0 \
+    AHAMVOICE_PORT=8765 \
+    AHAMVOICE_HOME=/data \
+    AHAMVOICE_MODELS_DIR=/models \
+    AHAMVOICE_ASR_DEVICE=cuda
+# FunASR/torch 用 "cuda" 字符串触发 GPU 路径; ROCm 的 HIP 后端响应 device="cuda"
+# (HIP cuda 兼容层, gfx1151 已验证 torch.cuda.is_available()=True)。
+
+VOLUME ["/models", "/data"]
+EXPOSE 8765
+
+# /api/health 在密码门白名单内 (security.py), 健康检查可裸探。
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=60s \
+    CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"AHAMVOICE_PORT\",\"8765\")}/api/health',timeout=3)" || exit 1
+
+CMD ["sh", "-c", "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port ${AHAMVOICE_PORT:-8765}"]

@@ -1,0 +1,17 @@
+# config/homepage/widgets.yaml
+# 顶部系统信息卡。
+# 注: homepage 在容器内, 看到的是容器资源; 宿主机的磁盘/GPU 用 Glances 服务卡看。
+---
+- logo:
+    icon: 💻
+    text: Mozin Workstation
+- resources:
+    cpu: true
+    memory: true
+- search:
+    focus: true
+- datetime:
+    text_size: xl
+    format:
+      timeStyle: short
+      dateStyle: long

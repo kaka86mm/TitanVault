@@ -1,0 +1,73 @@
+# models/models.yaml
+# 模型清单。下载源由 MODEL_SOURCE 控制:
+#   MODEL_SOURCE=modelscope  → 国内 (魔搭, 快, 但 Qwen3.6 MTP 版仅 HF 有)
+#   MODEL_SOURCE=hf          → HuggingFace (经 HF_ENDPOINT=https://hf-mirror.com 国内加速)
+# install.sh Phase 4 的 download-models.sh 读此文件, 按当前 MODEL_SOURCE 选 sources 里的对应源。
+#
+# ⚠️ 主力 LLM 用 MTP 版 (Multi-Token Prediction), 仅 unsloth HF 仓库有, modelscope 无。
+# MODEL_SOURCE=modelscope 时 llm 也走 HF (hf-mirror), 其余模型走 modelscope。
+# 模型不打进镜像 (体积大), 由 download-models.sh 拉取。
+models:
+  # ===== 主力 LLM (llama.cpp main, port 8082) — MTP 版 =====
+  # MTP (Multi-Token Prediction) 版推理更快。unsloth UD-Q4_K_XL 是生产验证的甜点量化
+  # (22.8GB, 395 GTT 内存够全 offload)。1.22 生产实测可用。
+  llm:
+    name: Qwen3.6-35B-A3B-MTP
+    quant: UD-Q4_K_XL
+    filename: Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
+    size_gb: 22.8
+    dest: ${DATA_DIR}/models/llm/
+    # MTP 版仅 unsloth HF 有, modelscope 无 → 两个源都指 HF (modelscope 模式靠 hf-mirror)
+    sources:
+      modelscope: "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"
+      hf: "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"
+    # 多模态投影 (llama-server --mmproj, 支持图片输入)
+    extras:
+      - name: mmproj-Qwen3.6-35B-A3B
+        filename: mmproj-F16.gguf
+        modelscope: "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"
+        hf: "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"
+
+  # ===== Embedding (llama.cpp embed, port 8084) =====
+  embed:
+    name: Qwen3-Embedding-0.6B
+    quant: Q8_0
+    filename: Qwen3-Embedding-0.6B-Q8_0.gguf
+    size_gb: 0.7
+    dest: ${DATA_DIR}/models/embedding/
+    sources:
+      modelscope: "qwen/Qwen3-Embedding-0.6B-GGUF"
+      hf: "Qwen/Qwen3-Embedding-0.6B-GGUF"
+
+  # ===== Reranker (llama.cpp rerank, port 8083) — hindsight 记忆召回重排 =====
+  # Qwen3-Reranker-0.6B cross-encoder。HF 仅有原版 (非 GGUF), download-models.sh 自动转 GGUF。
+  rerank:
+    name: Qwen3-Reranker-0.6B
+    filename: Qwen3-Reranker-0.6B-f16.gguf
+    size_gb: 1.2
+    dest: ${DATA_DIR}/models/reranker/
+    sources:
+      modelscope: "Qwen/Qwen3-Reranker-0.6B"
+      hf: "Qwen/Qwen3-Reranker-0.6B"
+    needs_convert: true   # HF 原版需 convert_hf_to_gguf.py 转 GGUF
+
+  # ===== ASR (sensevoice, port 9991) =====
+  asr:
+    name: SenseVoiceSmall
+    dest: ${DATA_DIR}/models/asr/
+    sources:
+      modelscope: "iic/SenseVoiceSmall"
+      hf: "iic/SenseVoiceSmall"
+    # sensevoice 还需 VAD 模型 (sensevoice_api.py 内部下载)
+    extras:
+      - name: speech_fsmn_vad_zh-cn-16k-common-pytorch
+        modelscope: "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
+        hf: "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
+
+  # ===== MinerU PDF 解析 (mineru-api, GPU) =====
+  mineru:
+    name: PDF-Extract-Kit-1.0
+    dest: ${DATA_DIR}/mineru/rocm-models/
+    sources:
+      modelscope: "OpenDataLab/PDF-Extract-Kit-1.0"
+      hf: "opendatalab/PDF-Extract-Kit-1.0"

@@ -1,0 +1,48 @@
+# ComfyUI ROCm 镜像 — AMD gfx1151 (Radeon 8060S) 图像生成
+#
+# 基镜像: 官方 rocm/pytorch (rocm7.2.3 + torch 2.9.1, gfx1151 已验证 hip available=True,
+#   120GB VRAM via GTT 统一内存)。ComfyUI 用 ROCm/HIP 后端跑 Stable Diffusion。
+#
+# 1.22 生产原用 ghcr.io/ai-dock/comfyui (CUDA 镜像), 在 395 上报
+#   "Found no NVIDIA driver" — 出不了图。本镜像改用 ROCm torch 才能真用 GPU。
+#
+# 模型不打进镜像 (SD 模型数 GB), volume 挂载 /models, 用户自行下载放置。
+FROM rocm/pytorch:rocm7.2.3_ubuntu22.04_py3.10_pytorch_release_2.9.1
+
+# github 直连国内常超时 (TLS 断开), 定义多源 clone 函数
+ARG USE_CN_MIRROR=1
+RUN echo '#!/bin/bash' > /usr/local/bin/git-clone-mirror.sh && \
+    echo 'set -e' >> /usr/local/bin/git-clone-mirror.sh && \
+    echo 'url="$1"; dir="$2"' >> /usr/local/bin/git-clone-mirror.sh && \
+    echo 'for m in "$url" "https://gh-proxy.com/$url" "https://ghfast.top/$url"; do' >> /usr/local/bin/git-clone-mirror.sh && \
+    echo '  git clone --depth 1 "$m" "$dir" 2>/dev/null && exit 0' >> /usr/local/bin/git-clone-mirror.sh && \
+    echo '  rm -rf "$dir"' >> /usr/local/bin/git-clone-mirror.sh && \
+    echo 'done' >> /usr/local/bin/git-clone-mirror.sh && \
+    echo 'echo "clone failed: $url"; exit 1' >> /usr/local/bin/git-clone-mirror.sh && \
+    chmod +x /usr/local/bin/git-clone-mirror.sh
+
+# ComfyUI 源码 + ComfyUI-Manager (社区必备, 模型/插件管理)
+ARG COMFYUI_REF=master
+RUN cd /opt && \
+    /usr/local/bin/git-clone-mirror.sh https://github.com/comfyanonymous/ComfyUI.git ComfyUI && \
+    cd ComfyUI && \
+    (git checkout ${COMFYUI_REF} 2>/dev/null || true) && \
+    # ComfyUI-Manager: 社区插件/模型管理 (可选, clone 失败不阻断核心 build)
+    cd /opt/ComfyUI/custom_nodes && \
+    (/usr/local/bin/git-clone-mirror.sh https://github.com/ltdrdata/ComfyUI-Manager.git || \
+     echo "WARN: ComfyUI-Manager clone 失败, 跳过 (核心 ComfyUI 不受影响)")
+
+# 安装 ComfyUI 依赖 (torch 走 base 已装的 ROCm 版, pip 跳过 torch 重新下载)
+RUN cd /opt/ComfyUI && \
+    pip install --no-cache-dir -r requirements.txt
+
+WORKDIR /opt/ComfyUI
+
+# 模型挂载点 (SD checkpoints/vae/loras 等, 用户放置)
+VOLUME ["/models"]
+
+EXPOSE 8188
+
+# --listen: 允许外部访问; --preview-method auto: 预览图; 模型路径指向挂载卷
+CMD ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188", \
+     "--preview-method", "auto"]

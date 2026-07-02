@@ -1,0 +1,37 @@
+# secrets / runtime config (安装器生成, 不提交)
+.env
+.env.local
+*.local
+
+# 渲染后的配置 (从 .tpl 生成, 不提交)
+config/caddy/Caddyfile
+config/litellm/config.yaml
+config/hermes/config.yaml
+
+# models (体积大, 下载而非提交)
+models/cache/
+models/*.gguf
+models/*.bin
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# node
+node_modules/
+dist/
+
+# offline 镜像包 (大文件, 不提交; 用户自行打包或 git-lfs)
+images/offline/*.tar.gz
+
+# 运行时数据 (挂载到 DATA_DIR, 不在仓库内)
+# (仅当 DATA_DIR 指向仓库内时生效)
+
+# os
+.DS_Store
+Thumbs.db
+
+# 备份/日志
+backups/
+logs/

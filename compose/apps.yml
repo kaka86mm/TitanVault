@@ -1,0 +1,115 @@
+# compose/apps.yml
+# 第三档: 应用 (full preset)
+#   Open Notebook + Filebrowser + SearXNG + Gitea
+services:
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    profiles: [apps]
+    restart: unless-stopped
+    # user root: 镜像默认 USER user(1000), 但卷 ${DATA_DIR} 属主 root,
+    # 降权写不了 /database/filebrowser.db (permission denied)。用 root 覆盖。
+    # 安全可接受: filebrowser 自带 admin 认证, 且仅内网 (:8085)。
+    user: "root"
+    volumes:
+      - ${DATA_DIR:-/data}:/srv
+      - ${DATA_DIR:-/data}/filebrowser:/database
+    # -d 指定 DB 路径到持久化卷; 首次启动随机生成 admin 密码, 查日志获取:
+    #   docker compose exec filebrowser cat /database/.filebrowser.log
+    #   或 docker logs <filebrowser容器> | grep password
+    command: ["--database", "/database/filebrowser.db", "--root", "/srv"]
+    ports: ["8085:80"]
+    networks: [mozin]
+    logging: &id001
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  searxng:
+    # 无简短版本 tag (官方用日期+commit 滚动), 用 latest
+    image: searxng/searxng:latest
+    profiles: [apps]
+    restart: unless-stopped
+    environment:
+      # basex-url 设置 (新版 searxng 需要正确生成搜索链接)
+      - SEARXNG_BASE_URL=http://${HOST_IP:-localhost}:8087/
+    volumes:
+      # 挂载预置 settings.yml (只读), 避免 entrypoint 因卷权限写不了而崩溃。
+      # 官方镜像 entrypoint 检测到 settings.yml 已存在就跳过模板创建。
+      - ../config/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]
+    ports: ["8087:8080"]
+    networks: [mozin]
+    logging: *id001
+
+  gitea:
+    image: gitea/gitea:1.24
+    profiles: [apps]
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      # INSTALL_LOCK=true: 跳过首次安装向导页面 (开箱即用, 否则用户首次打开要填表单)
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__DOMAIN: "${HOST_IP:-localhost}"
+      GITEA__server__ROOT_URL: "http://${HOST_IP:-localhost}:3002/"
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: postgres:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: postgres
+      GITEA__database__PASSWD: ${POSTGRES_PASSWORD:?must be set}
+    volumes:
+      - ${DATA_DIR:-/data}/gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports: ["3002:3000", "2222:22"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [mozin]
+    logging: *id001
+
+  # Open Notebook: 知识库 (依赖 SurrealDB)
+  # LLM 在 UI 运行时配置 (指向发行版 litellm http://litellm:4000/v1)
+  open-notebook-surrealdb:
+    image: surrealdb/surrealdb:v2
+    profiles: [apps]
+    restart: unless-stopped
+    command: start --log info --user root --pass 
+      ${OPEN_NOTEBOOK_SURREAL_PASSWORD:?must be set} 
+      rocksdb:/mydata/mydatabase.db
+    user: root
+    volumes:
+      - ${DATA_DIR:-/data}/open-notebook/db:/mydata
+    networks: [mozin]
+    logging: *id001
+
+  open-notebook:
+    image: lfnovo/open_notebook:v1-latest
+    profiles: [apps]
+    restart: unless-stopped
+    environment:
+      OPEN_NOTEBOOK_ENCRYPTION_KEY: ${OPEN_NOTEBOOK_ENCRYPTION_KEY:?must be set}
+      SURREAL_URL: ws://open-notebook-surrealdb:8000/rpc
+      SURREAL_USER: root
+      SURREAL_PASSWORD: ${OPEN_NOTEBOOK_SURREAL_PASSWORD:?must be set}
+      SURREAL_NAMESPACE: open_notebook
+      SURREAL_DATABASE: open_notebook
+      # LLM: 指向发行版 litellm (复用本机 llama.cpp), 而非默认 OpenAI 云端
+      # open-notebook 也支持在 UI Models section 改模型, 但 key/endpoint 需先 env 设
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:?must be set}
+      OPENAI_API_BASE: http://litellm:4000/v1
+    volumes:
+      - ${DATA_DIR:-/data}/open-notebook/data:/app/data
+    # 双端口: 8502 前端 (Next.js), 5055 API (FastAPI)。
+    # 前端自动探测 API 地址拼成 http://<host>:5055, 浏览器要能直连 → 两个端口都发布。
+    ports: ["8088:8502", "5055:5055"]
+    depends_on:
+      - open-notebook-surrealdb
+    networks: [mozin]
+    logging: *id001
+
+networks:
+  mozin:
+    driver: bridge

@@ -1,0 +1,12 @@
+fastapi>=0.110
+uvicorn>=0.29
+# sensevoice_api.py 用 UploadFile=File(...) / Form(...), FastAPI 需此库解析 multipart
+python-multipart>=0.0.9
+soundfile>=0.12
+# torch CPU: funasr 依赖 torch 但不强制安装 (其 setup 写 torch 为可选), 必须显式声明。
+# 不加会导致 'No module named torch' (1.7 实测)。
+torch
+torchaudio
+funasr>=1.1
+modelscope>=1.13
+huggingface_hub>=0.23

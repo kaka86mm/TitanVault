@@ -1,0 +1,134 @@
+# compose/agents.yml
+# agent 层 (full preset)。所有 image 路径已对照上游官方文档/registry 核实 (2026-06-28)。
+#
+# 授权说明 (见根 NOTICE + 各 image 目录 THIRD_PARTY_LICENSES):
+#   - hermes / hindsight        : MIT
+#   - open-design               : Apache-2.0
+#   - next-ai-draw-io           : Apache-2.0
+#   - cloudcli                  : AGPL-3.0 (强 copyleft), 仅引用不打包源码
+#
+# ⚠️ 部分服务无公开 pre-built image (见文末注释块), 需用户从源码 build。
+services:
+  # === hindsight: agent 记忆 (MIT) ===
+  # 验证: ghcr.io/vectorize-io/hindsight, 100 tags, latest-slim 存在
+  # 依赖: postgres + pgvector (复用 infra, 库=hindsight, init脚本已装vector扩展)
+  # 依赖: LLM (复用 litellm)
+  hindsight:
+    image: ghcr.io/vectorize-io/hindsight:latest-slim
+    profiles: [agents]
+    restart: unless-stopped
+    environment:
+      # 复用 infra postgres (hindsight 库, 已预装 pgvector 扩展)
+      HINDSIGHT_API_DATABASE_URL: 
+        postgresql://postgres:${POSTGRES_PASSWORD:?must be 
+        set}@postgres:5432/hindsight
+      # LLM 走发行版 litellm (统一路由), 非默认 OpenAI
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_MODEL: ${LLM_MODEL_NAME:-Qwen3.6-35B-A3B}
+      HINDSIGHT_API_LLM_BASE_URL: http://litellm:4000/v1
+      HINDSIGHT_API_LLM_API_KEY: ${LITELLM_MASTER_KEY:?must be set}
+      # Embedding 走 litellm (默认 local 需镜像内置 sentence-transformers, slim 镜像没有 → 改 litellm)
+      HINDSIGHT_API_EMBEDDINGS_PROVIDER: litellm
+      HINDSIGHT_API_LITELLM_API_BASE: http://litellm:4000
+      HINDSIGHT_API_EMBEDDINGS_LITELLM_API_KEY: ${LITELLM_MASTER_KEY:?must be set}
+      HINDSIGHT_API_EMBEDDINGS_LITELLM_MODEL: ${EMBED_MODEL_NAME:-Qwen3-Embedding-0.6B}
+      # Reranker: Qwen3-Reranker-0.6B via litellm (caddy 重写 /v2→/v1 给 llama.cpp)
+      HINDSIGHT_API_RERANKER_PROVIDER: litellm
+      HINDSIGHT_API_RERANKER_LITELLM_API_BASE: http://litellm:4000
+      HINDSIGHT_API_RERANKER_LITELLM_API_KEY: ${LITELLM_MASTER_KEY:?must be set}
+      HINDSIGHT_API_RERANKER_LITELLM_MODEL: Qwen3-Reranker-0.6B
+    ports: ["8888:8888"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [mozin]
+    logging: &id001
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  # === next-ai-draw-io: AI 画图 (Apache-2.0) ===
+  # 验证: ghcr.io/dayuanjiang/next-ai-draw-io, latest 存在, 容器内监听 3000
+  next-ai-draw-io:
+    image: ghcr.io/dayuanjiang/next-ai-draw-io:latest
+    profiles: [agents]
+    restart: unless-stopped
+    ports: ["4733:3000"]
+    networks: [mozin]
+    logging: *id001
+
+  # === hermes: 原生部署 (非容器) ===
+  # Hermes Agent 是运维 agent, 需要完整宿主机能力 (docker/systemctl/网络/文件系统)。
+  # 容器化需挂 docker.sock 等绕路, 原生部署天然拥有全部能力。
+  # 安装: native/hermes/install.sh (venv + pip install hermes-agent)
+  # 服务: native/hermes/hermes-{dashboard,gateway}.service.tpl (systemd)
+  # 端口: 9119 (dashboard) / 8642 (gateway api_server), 由 systemd 直接监听
+
+  # === open-design: 本地优先的开源 Claude Design 替代品 (Apache-2.0) ===
+  # 验证: github.com/nexu-io/open-design, deploy/README.md。
+  # 单 Alpine 镜像 (daemon 同时服务 API + Next.js 静态导出), 容器内端口 7456。
+  # ⚠️ ghcr.io/nexu-io/od:latest 实际未发布 (401 unauthorized), 从源码 build:
+  #   install.sh Phase3 用 images/open-design/build.sh (多阶段 pnpm + Next.js)。
+  open-design:
+    image: open-design:local
+    profiles: [agents]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: "--max-old-space-size=192"
+      OD_BIND_HOST: "0.0.0.0"
+      OD_PORT: "7456"
+      # 工作站内部用 (caddy 网关在前面 + 多子网内网), 关 API token 鉴权。
+      # 公网暴露时务必改用 OD_API_TOKEN (openssl rand -hex 32)。
+      OD_DISABLE_API_AUTH: "1"
+      # OD_ALLOWED_ORIGINS 不能用 "*" (daemon 当 URL 解析会 ERR_INVALID_URL)。
+      # 多子网无法枚举, 留空让 daemon 用同源策略 (浏览器直连 :7456 同源即可)。
+      OD_ALLOWED_ORIGINS: ""
+    volumes:
+      - ${DATA_DIR:-/data}/open-design:/app/.od
+    ports: ["7456:7456"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 384m
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7456/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks: [mozin]
+    logging: *id001
+
+  # === cloudcli: Claude Code UI (AGPL-3.0) ===
+  # ⚠️ 上游无公开 pre-built image (走 npm 运行)。需用户自行从源码 build:
+  #   git clone https://github.com/siteboon/claudecodeui && cd claudecodeui
+  #   docker build -t cloudcli:local -f docker/claude-code/Dockerfile .
+  # build 后取消下面注释启用 (AGPL: 仅引用不打包源码进本仓库)
+  # cloudcli:
+  #   image: cloudcli:local
+  #   profiles: [agents]
+  #   restart: unless-stopped
+  #   ports: ["9998:3000"]
+  #   networks: [mozin]
+
+  # === opensquilla: 原生部署 (非容器) ===
+  # OpenSquilla 用于写代码/改项目源码, 需要访问宿主机文件系统/git/build 工具。
+  # 安装: native/opensquilla/install.sh (venv + pip install opensquilla)
+  # 服务: native/opensquilla/opensquilla.service.tpl (systemd)
+  # 端口: 18791 (gateway + control web UI), 由 systemd 直接监听
+
+  # === html-video: 视频工具 (Apache-2.0) ===
+  # ⚠️ 上游无 Docker image / Dockerfile (Node CLI, 需 playwright + chromium 运行环境)
+  # 需用户自行从源码封装容器或本地 npm 运行:
+  #   git clone https://github.com/nexu-io/html-video && cd html-video
+  #   npm install && npx playwright install chromium
+  # 本发行版暂不提供容器化封装 (非标准 web 服务)
+
+networks:
+  mozin:
+    driver: bridge

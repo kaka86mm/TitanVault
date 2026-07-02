@@ -1,0 +1,87 @@
+# config/searxng/settings.yml
+# SearXNG 配置。国内网络下 google/ddg/wikipedia 等默认引擎不可达 → 0 结果,
+# 改用国内可达引擎 (bing/baidu/sogou/quark/360search)。
+# 挂载到 ${DATA_DIR}/searxng/settings.yml。
+---
+# 继承镜像默认 (引擎定义), 下面用 engines 段按国内网络筛选
+use_default_settings: true
+
+general:
+  instance_name: "Mozin Search"
+  debug: false
+
+search:
+  # 启用 json 格式输出 (供 agent 作为搜索后端调用 API)
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: ""
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  secret_key: "mozin-searxng-change-me-in-production"
+  # limiter: 公共实例防滥用。工作站内部用, 关掉避免挡内部 agent 调用
+  limiter: false
+  image_proxy: true
+
+ui:
+  # SearXNG locale 用 BCP47 + script 格式, 不支持 zh-CN。简体中文 = zh-Hans-CN。
+  default_locale: "zh-Hans-CN"
+  default_theme: simple
+
+outgoing:
+  # 国内引擎直连即可, 不需要代理。如需代理 (如同时用 google), 取消下面注释:
+  # proxies:
+  #   all://: "http://mihomo:7890"
+  request_timeout: 8.0   # 国内引擎响应快, 8s 够 (默认 3s 太短会误超时)
+  max_request_timeout: 15.0
+
+# 引擎筛选: 国内可达的启用, 国外不可达的禁用 (避免每次搜索都等超时)
+engines:
+  # === 国内可达引擎 (启用) ===
+  - name: bing
+    disabled: false
+    timeout: 8
+  - name: bing images
+    disabled: false
+    timeout: 8
+  - name: bing news
+    disabled: false
+    timeout: 8
+  - name: bing videos
+    disabled: false
+    timeout: 8
+  - name: baidu
+    disabled: false
+    timeout: 8
+  - name: sogou
+    disabled: false
+    timeout: 8
+  - name: quark
+    disabled: false
+    timeout: 8
+  - name: 360search
+    disabled: false
+    timeout: 8
+  - name: wikipedia
+    disabled: false
+    timeout: 10
+    # wikipedia 国内有时可达 (cn.wikipedia.org), 保留但放宽超时
+
+  # === 国内不可达引擎 (禁用, 避免每次搜索等超时拖慢) ===
+  - name: google
+    disabled: true
+  - name: google images
+    disabled: true
+  - name: google news
+    disabled: true
+  - name: google videos
+    disabled: true
+  - name: duckduckgo
+    disabled: true
+  - name: brave
+    disabled: true
+  - name: wikidata
+    disabled: true

@@ -1,0 +1,92 @@
+# compose/infra.yml
+# 第一档: 核心基础设施 (minimal preset 起)
+# 全发行版共享的 postgres / redis / qdrant —— 上层服务 (litellm/gitea 等) 复用。
+#
+# 数据卷统一在 ${DATA_DIR} 下, 安装器 Phase 1 让用户选 (默认 /data)。
+# 密码全部来自 .env, 由安装器用 openssl rand 随机生成, 仓库只给 .env.example 空值。
+services:
+  postgres:
+    # 用 pgvector 镜像而非纯 postgres: 普通 postgres 不带向量扩展,
+    # 而 hindsight (agent 记忆) 需要 pgvector 做相似度检索。
+    # pgvector/pgvector:pg17 = postgres17 + 预装 pgvector, 与标准 postgres 完全兼容。
+    image: pgvector/pgvector:pg17
+    profiles: [infra]
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?must be set}
+      # 一次初始化多库: gitea / litellm / mcpjungle / hindsight
+      POSTGRES_MULTIPLE_DATABASES:
+        gitea,litellm,mcpjungle,hindsight
+      # 生产级: 慢查询日志 + 语句超时, 防止失控查询拖垮共享实例
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=512MB"      # 共享缓冲 (395 内存充足, 给 db 多点)
+      - "-c"
+      - "log_min_duration_statement=2000"  # 慢于2秒的查询记日志
+      - "-c"
+      - "statement_timeout=60s"     # 单查询最长60秒
+      - "-c"
+      - "max_connections=200"
+    volumes:
+      - ../config/postgres/init-multiple-db.sh:/docker-entrypoint-initdb.d/init-multiple-db.sh:ro
+      - ${DATA_DIR:-/data}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [mozin]
+    logging: &id001
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  redis:
+    image: redis:7-alpine
+    profiles: [infra]
+    restart: unless-stopped
+    # redis-server 需在 argv 指定 --requirepass (无 env 等价物), 这是 redis 的固有限制。
+    command: redis-server --requirepass ${REDIS_PASSWORD:?must be set} 
+      --appendonly yes
+    environment:
+      # REDISCLI_AUTH: redis-cli 自动读此变量做认证 (healthcheck 用裸 redis-cli ping)。
+      # 不在 healthcheck 命令里写 -a $PASSWORD, 避免密码出现在进程 argv (docker inspect/ps 可见)。
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?must be set}
+    volumes:
+      - ${DATA_DIR:-/data}/redis:/data
+    healthcheck:
+      # grep PONG: 避免 NOAUTH 假阴性 (REDISCLI_AUTH 已在 env 提供认证)
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [mozin]
+    logging: *id001
+
+  qdrant:
+    # 版本对齐 Dify 1.15.0 兼容 (上游用 langgenius/qdrant:v1.8.3, 官方 qdrant:v1.8.3 API 兼容)
+    # 注意: qdrant/v1.13+ tag 不存在 (官方用纯数字, 但 Dify 需 1.8.x 兼容版)
+    image: qdrant/qdrant:v1.8.3
+    profiles: [infra]
+    restart: unless-stopped
+    environment:
+      # Dify 已移除; qdrant 仍保留供其它向量检索服务使用。
+      # qdrant 需要 API key 鉴权 (QDRANT__SERVICE__API_KEY)。
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?must be set}
+    volumes:
+      - ${DATA_DIR:-/data}/qdrant:/qdrant/storage
+    # qdrant 精简镜像无 curl/wget, 用 bash 内置 /dev/tcp 探端口 (6333 是 REST 端口)
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [mozin]
+    logging: *id001
+
+networks:
+  mozin:
+    driver: bridge

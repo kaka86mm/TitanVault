@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mozin — API 指南</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--green:#22c55e;--red:#ef4444;--yellow:#eab308;--blue:#3b82f6}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;padding:20px;max-width:1200px;margin:0 auto}
+h1{font-size:1.6rem;margin-bottom:4px}
+.sub{color:var(--muted);font-size:.9rem;margin-bottom:16px}
+h2{font-size:1.15rem;margin:20px 0 10px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px}
+.toolbar input{background:#0b1220;border:1px solid var(--border);border-radius:4px;padding:5px 10px;color:var(--text);font-family:monospace;font-size:.8rem;flex:1;min-width:200px}
+.toolbar .count{color:var(--muted);font-size:.85rem}
+.api-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px}
+.api-card .head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.api-card .title{font-size:1.05rem;font-weight:600}
+.badge{font-size:.7rem;padding:2px 8px;border-radius:4px;background:#6366f1;color:#fff}
+.badge.web{background:#0891b2}.badge.new{background:var(--green);color:#000}
+.badge.key{background:var(--yellow);color:#000}
+.status{font-size:.78rem;padding:2px 10px;border-radius:12px;font-weight:600}
+.status.ok{background:rgba(34,197,94,.15);color:var(--green)}
+.status.fail{background:rgba(239,68,68,.15);color:var(--red)}
+.status.checking{background:rgba(234,179,8,.15);color:var(--yellow)}
+.desc{color:var(--muted);font-size:.82rem;margin:4px 0 6px}
+.endpoint{display:flex;align-items:center;gap:6px;margin:5px 0;font-family:monospace;font-size:.8rem;flex-wrap:wrap}
+.method{padding:1px 5px;border-radius:3px;font-size:.7rem;font-weight:700}
+.method.GET{background:var(--green);color:#000}.method.POST{background:var(--yellow);color:#000}
+.method.PUT{background:var(--blue);color:#fff}.method.DELETE{background:var(--red);color:#fff}
+.path{color:var(--blue)}
+code.example{background:#0b1220;border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-family:monospace;font-size:.78rem;overflow-x:auto;display:block;margin:5px 0;color:#93c5fd;white-space:pre}
+.btn{font-size:.75rem;padding:3px 10px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);cursor:pointer}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.test-result{font-size:.78rem;font-family:monospace;margin-top:5px;padding:6px;border-radius:4px;display:none;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow:auto;background:#0b1220;border:1px solid var(--border)}
+.test-result.show{display:block}
+.loading{text-align:center;color:var(--muted);padding:40px}
+</style>
+</head>
+<body>
+<h1>Mozin Workstation API 指南</h1>
+<div class="sub">自动发现所有运行中的服务 · 实时健康检查 · 一键测试 · 新装服务自动出现</div>
+<div class="toolbar">
+  <input type="password" id="apikey" placeholder="LITELLM_MASTER_KEY (LiteLLM 测试用, 本地缓存)" />
+  <span class="count" id="count"></span>
+  <button class="btn" onclick="load()">刷新</button>
+</div>
+<div id="content"><div class="loading">发现服务中...</div></div>
+
+<script>
+let SERVICES=[];
+const CAT_ORDER=['LLM','语音','文档','图像','工具','应用','运维','Agent','其它'];
+// BASE: 页面可能在 /api-guide/ (caddy 反代) 或 / (直连 :8098)。
+// 用相对路径: 同目录下 api/xxx 自动跟随当前页面路径。
+const BASE = './';
+
+// API key 输入框
+const keyInput=document.getElementById('apikey');
+if(localStorage.getItem('mozin_key'))keyInput.value=localStorage.getItem('mozin_key');
+keyInput.addEventListener('change',()=>localStorage.setItem('mozin_key',keyInput.value));
+
+async function load(){
+  const el=document.getElementById('content');
+  el.innerHTML='<div class="loading">发现服务中...</div>';
+  try{
+    const r=await fetch(BASE+'api/services');  // api-discover 后端 (同源, 无 CORS)
+    const d=await r.json();
+    SERVICES=d.services||[];
+    document.getElementById('count').textContent=SERVICES.length+' 个服务';
+    render();
+    // 异步检查所有健康
+    SERVICES.forEach(s=>checkHealth(s.port));
+  }catch(e){el.innerHTML='<div class="loading">加载失败: '+e.message+'<br>确保 api-discover 服务在运行</div>';}
+}
+
+function render(){
+  const el=document.getElementById('content');
+  if(!SERVICES.length){el.innerHTML='<div class="loading">没有发现服务</div>';return;}
+  // 按分类分组
+  const groups={};
+  SERVICES.forEach(s=>{(groups[s.category]=groups[s.category]||[]).push(s);});
+  const cats=CAT_ORDER.filter(c=>groups[c]).concat(Object.keys(groups).filter(c=>!CAT_ORDER.includes(c)));
+  let html='';
+  for(const cat of cats){
+    html+=`<h2>${cat} (${groups[cat].length})</h2>`;
+    for(const s of groups[cat]){
+      html+=renderCard(s);
+    }
+  }
+  el.innerHTML=html;
+}
+
+function renderCard(s){
+  const port=s.port;
+  let epHtml='';
+  (s.endpoints||[]).forEach(e=>{
+    const[m,p,desc]=Array.isArray(e)?e:[e,'',''];
+    epHtml+=`<div class="endpoint"><span class="method ${m}">${m}</span><span class="path">:${port}${p}</span>${desc?'<span style="color:var(--muted);font-size:.75rem">'+desc+'</span>':''}</div>`;
+  });
+  if(!epHtml && s.has_openapi)epHtml='<div class="endpoint"><span style="color:var(--muted)">有 OpenAPI 定义 (点测试查看)</span></div>';
+  const example=s.endpoints&&s.endpoints[0]?`:${port}${Array.isArray(s.endpoints[0])?s.endpoints[0][1]:''}`:`:${port}/`;
+  const badges=(s.type==='web'?'<span class="badge web">Web UI</span>':'')+
+               (s.key_required?'<span class="badge key">需 Key</span>':'')+
+               (s.has_openapi?'<span class="badge">OpenAPI</span>':'')+
+               (!s.known?'<span class="badge new">新发现</span>':'');
+  return `<div class="api-card" id="card-${port}">
+    <div class="head">
+      <span class="title">${s.name} <span style="color:var(--muted);font-size:.8rem">:${port}</span></span>
+      <span>${badges}<span class="status checking" id="s-${port}">检查中</span></span>
+    </div>
+    <div class="desc">${s.desc||s.image||''}</div>
+    ${epHtml}
+    <code class="example">curl http://&lt;IP&gt;${example}${s.key_required?' \\\n  -H "Authorization: Bearer $KEY"':''}</code>
+    <button class="btn" onclick="testApi(${port},'GET','/health')">健康检查</button>
+    <button class="btn" onclick="testApi(${port},'GET','/')">测试根路径</button>
+    <div class="test-result" id="r-${port}"></div>
+  </div>`;
+}
+
+async function checkHealth(port){
+  const el=document.getElementById('s-'+port);
+  if(!el)return;
+  try{
+    const r=await fetch(BASE+'api/health/'+port);  // 经后端代理, 无 CORS
+    const d=await r.json();
+    el.textContent=d.online?'在线':'离线';
+    el.className='status '+(d.online?'ok':'fail');
+  }catch(e){el.textContent='离线';el.className='status fail';}
+}
+
+async function testApi(port,method,path){
+  const el=document.getElementById('r-'+port);
+  el.className='test-result show';el.textContent='请求中...';
+  try{
+    let url=BASE+'api/test/'+port+'?method='+method+'&path='+encodeURIComponent(path);
+    let body='';
+    if(method==='POST'){
+      body=JSON.stringify({model:'kokoro',input:'test',voice:'kf'});
+    }
+    const opts={method:'POST',headers:{'Content-Type':'application/json'}};
+    if(body)opts.body=body;
+    const r=await fetch(url,opts);
+    const d=await r.json();
+    let txt=typeof d.body==='object'?JSON.stringify(d.body,null,2):String(d.body);
+    if(txt.length>400)txt=txt.slice(0,400)+'\n...';
+    el.textContent='HTTP '+d.status+'\n'+txt;
+  }catch(e){el.textContent='错误: '+e.message;}
+}
+
+load();
+</script>
+</body>
+</html>

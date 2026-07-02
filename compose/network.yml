@@ -1,0 +1,31 @@
+# compose/network.yml
+# 第二档: 代理 / 内网穿透 (standard preset 起)
+# 空配置纳入发行版, 用户在 .env 填自己的订阅/凭证:
+#   mihomo  代理, config 由安装器用 MIHOMO_SUBSCRIBE_URL 拉取订阅生成
+#   frp     内网穿透, frpc.toml 由安装器用 FRP_SERVER_ADDR/FRP_TOKEN 填充
+#
+# 留空 = 直连模式 (mihomo 仅作透明代理走 DIRECT), 不影响其余服务。
+services:
+  mihomo:
+    image: metacubex/mihomo:latest
+    profiles: [network]
+    restart: unless-stopped
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    volumes:
+      - ../config/mihomo/config.yaml:/root/.config/mihomo/config.yaml:ro
+      - ${DATA_DIR:-/data}/mihomo:/root/.config/mihomo
+
+    logging: &id001
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  frp:
+    image: snowdreamtech/frpc:latest
+    profiles: [network]
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ../config/frp/frpc.toml:/etc/frp/frpc.toml:ro
+    logging: *id001

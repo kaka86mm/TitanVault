@@ -1,0 +1,44 @@
+TitanVault
+Copyright 2026 Mozin (Apache-2.0)
+
+本发行版包含以下第三方开源组件, 各自遵循其原始授权:
+
+Apache-2.0:
+  - llama.cpp (https://github.com/ggml-org/llama.cpp) — LLM 推理引擎 (Vulkan)
+  - LiteLLM (https://github.com/BerriAI/litellm) — OpenAI 兼容 LLM 路由网关
+  - Caddy (https://github.com/caddyserver/caddy) — 反向代理网关
+  - Qdrant (https://github.com/qdrant/qdrant) — 向量数据库
+  - SearXNG (https://github.com/searxng/searxng) — 元搜索引擎
+  - open-design (https://github.com/nexu-io/od) — 设计工具
+  - next-ai-draw-io (https://github.com/DayuanJiang/next-ai-draw-io) — AI 流程图
+  - pgvector (https://github.com/pgvector/pgvector) — PostgreSQL 向量扩展
+  - OpenAdapt / browser-harness — 浏览器自动化 daemon
+
+MIT:
+  - TitanVault portal (原创) — 门户门面
+  - sensevoice (原创) — FunASR ASR
+  - aham-voice-web (原创) — 录音转写 + 会议纪要
+  - token-usage-api (原创) — LLM 用量统计
+  - Hermes Agent (https://github.com/NousResearch/hermes-agent) — AI 运维 Agent
+  - OpenSquilla (https://github.com/opensquilla/opensquilla) — AI 写代码 Agent
+  - browser-use (https://github.com/browser-use/browser-use) — AI 浏览器自动化
+  - hindsight (https://github.com/vectorize-io/hindsight) — Agent 长期记忆
+  - Open Notebook (https://github.com/lfnovo/open_notebook) — 知识库
+  - Gitea (https://github.com/go-gitea/gitea) — 自托管 Git
+  - Filebrowser (https://github.com/filebrowser/filebrowser) — 文件管理
+  - ComfyUI (https://github.com/comfyanonymous/ComfyUI) — Stable Diffusion
+  - Glances (https://github.com/nicolargo/glances) — 系统监控
+  - Uptime Kuma (https://github.com/louislam/uptime-kuma) — 服务监控
+  - Kokoro TTS (https://github.com/remsky/kokoro-fastapi) — 文字转语音
+  - MinerU (https://github.com/opendatalab/MinerU) — PDF 解析
+
+其它授权:
+  - Google Chrome — headless 浏览器 (CDP 后端), 商业免费
+  - SurrealDB (https://github.com/surrealdb/surrealdb) — Open Notebook 数据库 (BSL)
+  - Redis (https://github.com/redis/redis) — 缓存/队列 (RS2v2/SSPL 双授权)
+
+模型 (各自遵循其原始授权, 由用户下载, 不打包进发行版):
+  - Qwen3.6-35B-A3B (Apache-2.0) — 主力 LLM (原生多模态)
+  - Qwen3-Embedding-0.6B (Apache-2.0) — 文本向量
+  - Qwen3-Reranker-0.6B (Apache-2.0) — 重排序
+  - SenseVoiceSmall (Apache-2.0) — 语音识别

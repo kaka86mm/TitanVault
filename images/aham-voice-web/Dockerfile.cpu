@@ -1,0 +1,31 @@
+# aham-voice-web (CPU 版) — 无 GPU 环境备用 (linux/amd64 + linux/arm64)。
+# 395 工作站默认用 Dockerfile.rocm; 本文件供无 ROCm 宿主 (CI / 异构机器) 回退。
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg libsndfile1 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# CPU 版用 requirements-asr.txt (含 torch CPU / funasr / modelscope 全栈, 版本 pin
+# 按 Python 3.12 锁, 与本基镜像 python:3.12 匹配)。
+COPY backend/requirements.txt backend/requirements-asr.txt ./backend/
+RUN pip install --no-cache-dir -r backend/requirements-asr.txt
+
+COPY backend/ ./backend/
+COPY frontend/dist/ ./frontend/dist/
+
+ENV AHAMVOICE_HOST=0.0.0.0 \
+    AHAMVOICE_PORT=8765 \
+    AHAMVOICE_HOME=/data \
+    AHAMVOICE_MODELS_DIR=/models \
+    AHAMVOICE_ASR_DEVICE=cpu
+
+VOLUME ["/models", "/data"]
+EXPOSE 8765
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=60s \
+    CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"AHAMVOICE_PORT\",\"8765\")}/api/health',timeout=3)" || exit 1
+
+CMD ["sh", "-c", "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port ${AHAMVOICE_PORT:-8765}"]

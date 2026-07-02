@@ -1,0 +1,24 @@
+:3000 {
+	root * /srv/titanvault
+	try_files {path} /index.html
+	file_server
+
+	# LiteLLM API (自动注入 master key, 前端无需鉴权)
+	handle /llm/* {
+		rewrite * /v1/{path.1}
+		reverse_proxy litellm:4000 {
+			header_up Authorization "Bearer {$LITELLM_MASTER_KEY}"
+		}
+	}
+
+	# 用量统计 (token-usage-api, 无鉴权)
+	handle /usage/* {
+		rewrite * /api/{path.1}
+		reverse_proxy token-usage-api:8090
+	}
+
+	# Glances API (资源监控, 无鉴权)
+	handle /glances/* {
+		reverse_proxy host-gateway:61208
+	}
+}

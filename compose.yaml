@@ -1,0 +1,15 @@
+# compose.yaml — 根编排入口
+#
+# 用 Compose 2.20+ 的 include 合并所有分层文件, 这样直接 `docker compose ...`
+# (无需逐个 -f) 就能解析跨文件的 depends_on 与服务名 DNS。
+#
+# preset 选择靠 profiles: 用户用 `--profile <preset>` 选层,
+# 或 install.sh 按 presets/<preset>.env 的 INCLUDE_* 转成一组 --profile。
+include:
+  - compose/infra.yml
+  - compose/gateway.yml
+  - compose/ai-capability.yml
+  - compose/network.yml
+  - compose/apps.yml
+  - compose/monitoring.yml
+  - compose/agents.yml

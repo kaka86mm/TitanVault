@@ -1,0 +1,30 @@
+# config/homepage/services-minimal.yaml
+# minimal 档门户卡片: 仅 LLM 推理入口 + 用量。
+# homepage 是用户入口页, 只放用户真正要点的服务, 不放基础设施后端。
+---
+- LLM 服务:
+    - LiteLLM (LLM 网关):
+        icon: /icons/openai.png
+        href: /go/litellm
+        description: OpenAI 兼容 LLM 网关 → 本机 llama.cpp
+    - 用量统计:
+        icon: /icons/chartbox.png
+        description: LiteLLM token 用量聚合 (实时)
+        widget:
+            type: customapi
+            url: http://token-usage-api:8090/api/usage
+            refreshInterval: 10000
+            mappings:
+                - field: totals.total_tokens
+                  label: 总 Tokens
+                  format: number
+                - field: totals.requests
+                  label: 请求数
+                  format: number
+                - field: totals.completion_tokens
+                  label: 生成 Tokens
+                  format: number
+    - API 指南:
+        icon: /icons/openai.png
+        href: /api-guide/
+        description: 所有 API 端点 + 调用示例 + 健康检查

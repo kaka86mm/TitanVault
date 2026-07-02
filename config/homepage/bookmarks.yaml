@@ -1,0 +1,4 @@
+# config/homepage/bookmarks.yaml
+# homepage 底部快捷链接。设为空 (不显示 GitHub/Reddit/YouTube 等无关链接)。
+# 工作站的入口都在 services 卡片里, 这里不需要额外书签。
+---

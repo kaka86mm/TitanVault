@@ -1,0 +1,56 @@
+# config/homepage/services-standard.yaml
+# standard 档门户卡片: LLM + AI 能力 (ASR/TTS/PDF/转写/画图/MCP)。
+# homepage 是用户入口页, 只放用户真正要点的服务, 不放基础设施后端。
+---
+- LLM 服务:
+    - LiteLLM (LLM 网关):
+        icon: /icons/openai.png
+        href: /go/litellm
+        description: OpenAI 兼容 LLM 网关 → 本机 llama.cpp
+    - 用量统计:
+        icon: /icons/chartbox.png
+        description: LiteLLM token 用量聚合 (实时)
+        widget:
+            type: customapi
+            url: http://token-usage-api:8090/api/usage
+            refreshInterval: 10000
+            mappings:
+                - field: totals.total_tokens
+                  label: 总 Tokens
+                  format: number
+                - field: totals.requests
+                  label: 请求数
+                  format: number
+                - field: totals.completion_tokens
+                  label: 生成 Tokens
+                  format: number
+    - API 指南:
+        icon: /icons/openai.png
+        href: /api-guide/
+        description: 所有 API 端点 + 调用示例 + 健康检查
+
+- AI 能力:
+    - SenseVoice ASR:
+        icon: /icons/microphone.png
+        href: /go/asr
+        description: 语音转写 + 情感 + 事件 (ROCm)
+    - Kokoro TTS:
+        icon: /icons/text-to-speech.png
+        href: /go/tts
+        description: 文字转语音
+    - MinerU Web (PDF):
+        icon: /icons/paperless.png
+        href: /go/mineru
+        description: PDF 解析 (ROCm GPU)
+    - Aham Voice (转写):
+        icon: /icons/microphone.png
+        href: /go/aham
+        description: 录音转写 + 说话人 + 情绪 + 会议纪要 (ROCm GPU)
+    - MCPJungle:
+        icon: /icons/mcp.png
+        href: /go/mcp
+        description: MCP 工具注册中心
+    - ComfyUI:
+        icon: /icons/comfyui.png
+        href: /go/comfyui
+        description: Stable Diffusion 图像生成 (ROCm GPU)

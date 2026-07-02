@@ -1,0 +1,59 @@
+# MinerU ROCm API 镜像 — mineru-web 的 GPU 推理后端 (AMD gfx1151)
+#
+# 基镜像: 官方 rocm/pytorch (rocm7.2.3 + torch 2.9.1, gfx1151 已验证可用)。
+#   生产原基于 cortibox-rocm-base, 但那是个含 cortibox 全栈 (postgres/qdrant/docling/node)
+#   的臃肿应用镜像; 实际 mineru 只需要 ROCm+torch 底子。改用官方 base, 干净可复现。
+#
+# 与 lpdswing/mineru-web-mineru-api (NVIDIA vLLM/CUDA) 的区别:
+#   - 基镜像: rocm/pytorch (AMD) 而非 vllm (NVIDIA CUDA)
+#   - GPU: torch ROCm 走 HIP 兼容层 (gfx1151), onnxruntime CUDA 不支持 gfx1151
+#
+# 本镜像只提供 mineru-api (推理端点, :8000), 供 mineru-web 业务层调用。
+# 模型不打进镜像 (4.6GB), volume 挂载 /models, 首次启动 mineru-models-download 下载。
+# 构建说明见同目录 BUILD.md。
+
+ARG ROCM_BASE=rocm/pytorch:rocm7.2.3_ubuntu22.04_py3.10_pytorch_release_2.9.1
+FROM ${ROCM_BASE}
+
+# CJK 字体 (PDF 中文渲染必需)。换阿里云源加速 (官方 base 是 archive.ubuntu.com)。
+ARG USE_CN_MIRROR=0
+RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
+      sed -i 's|http://archive.ubuntu.com|https://mirrors.aliyun.com|g; s|http://security.ubuntu.com|https://mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true; \
+      sed -i 's|http://archive.ubuntu.com|https://mirrors.aliyun.com|g; s|http://security.ubuntu.com|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/*.list 2>/dev/null || true; \
+      pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/; \
+      pip config set global.trusted-host mirrors.aliyun.com; \
+    fi && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        fonts-noto-cjk curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# mineru[core]==3.4.0 + magic-pdf (pipeline 模式必需) + doclayout-yolo (布局检测)
+# 不装 gradio: 本镜像只跑 mineru-api (无 UI), gradio 是上游 mineru_gradio.py 才需要。
+# torch 由 base 提供 (2.9.1+rocm7.2.3), pip 见已满足不会重装。
+RUN pip install --no-cache-dir \
+        "mineru[core]==3.4.0" \
+        "magic-pdf==1.3.12" \
+        "doclayout-yolo==0.0.2b1"
+
+# mineru-web 的 _pages.md 生成 patch (monkey-patch create_result_zip)。
+# sitecustomize.py Python 启动时自动加载, 给返回的 zip 追加按页 markdown。
+COPY patch/ /app/mineru_api_patch/
+
+# 模型目录 (volume 挂载, 首次启动 mineru-models-download 下载)
+ENV MINERU_MODEL_SOURCE=local \
+    MINERU_MODELS_DIR=/models \
+    HF_HOME=/models/hf_cache \
+    MODELSCOPE_CACHE=/models/ms_cache \
+    PYTHONPATH=/app/mineru_api_patch
+
+WORKDIR /app
+
+# mineru-api 真实健康端点是 /health (返回 status json), 不是 / (生产已验证)。
+HEALTHCHECK --interval=30s --timeout=20s --retries=3 --start-period=120s \
+    CMD curl -sf http://localhost:8000/health || exit 1
+
+EXPOSE 8000
+
+# 启动: mineru-api (OpenAI 风格推理端点, mineru-web backend 经 host-gateway 调它)。
+# --allow-public-http-client: 允许 backend 提交远程 URL (mineru-web host-inference 模式需要)。
+CMD ["sh", "-c", "mineru-api --host 0.0.0.0 --port 8000 --allow-public-http-client"]

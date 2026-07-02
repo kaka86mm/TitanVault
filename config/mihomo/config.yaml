@@ -1,0 +1,31 @@
+# config/mihomo/config.yaml.tpl
+# mihomo 代理配置骨架。
+#
+# 无订阅时 = 直连模式: mihomo 仅作透明代理, 所有流量走 DIRECT, 不影响其余服务。
+# 有订阅时: install.sh Phase 1 用 MIHOMO_SUBSCRIBE_URL 拉取订阅, 替换下面 proxies/rules。
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+
+# 订阅内容由 install.sh 填充 (取消下面注释并替换 URL):
+# proxy-providers:
+#   subscribe:
+#     type: http
+#     url: 
+#     interval: 86400
+#     path: ./proxy-provider.yaml
+#     health-check:
+#       enable: true
+#       url: https://www.gstatic.com/generate_204
+#       interval: 300
+
+# 无订阅: 直连模式
+proxies: []
+proxy-groups:
+  - name: DIRECT-ONLY
+    type: select
+    proxies:
+      - DIRECT
+rules:
+  - MATCH,DIRECT-ONLY
