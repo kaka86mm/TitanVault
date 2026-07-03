@@ -21,6 +21,9 @@ services:
       DEVICE: cpu
       NCPU: "8"
       PORT: "9991"
+      # modelscope 需要 HOME 可写 (存 credential cache), 容器默认 /home/app 不可写
+      HOME: /tmp
+      MODELSCOPE_CACHE: /data/models/asr
     volumes:
       - ${DATA_DIR:-/data}/models/asr:/data/models/asr
     ports: ["9991:9991"]
