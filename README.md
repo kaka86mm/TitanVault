@@ -196,6 +196,20 @@ flowchart TD
 
 > Exclusively targets the Ryzen AI Max+ 395. The installer verifies the GPU in Phase 0. Other hardware is not supported.
 
+### 🇨🇳 For users in China
+
+Docker Hub and GitHub are often slow or blocked in mainland China. TitanVault handles this with multiple fallbacks:
+
+- **Docker images**: 4 mirror sources with automatic failover (`1ms.run` → `1panel.live` → `xuanyuan.me` → `daocloud`)
+- **Models**: Select `cn` during install to download from ModelScope instead of HuggingFace
+- **npm (browser-use)**: Uses `registry.npmmirror.com` for Node.js packages
+- **PyPI**: Uses Tsinghua/Aliyun mirrors for Python packages
+- **GitHub source clones**: Multi-source fallback (`github.com` → `ghfast.top` → `gh-proxy.com` → `gitee.com`)
+
+**Offline pack** — If all mirrors fail, download the [offline image pack](https://github.com/kaka86mm/TitanVault/releases/tag/v0.2.0) and place it in `images/offline/`. The installer auto-loads it via `docker load`.
+
+> 💡 GitHub Release downloads may also be slow. If so, use a proxy or download via a mirror service like [ghproxy.com](https://ghproxy.com).
+
 ## 📁 Repository
 
 ```
@@ -222,6 +236,15 @@ TitanVault/
 | [Operations](docs/operations.md) | Day-to-day management |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues & fixes |
 | [Customization](docs/customize.md) | Models, ports, passwords |
+
+## ⚠️ Status
+
+This project is in early stage. It has only been tested on the author's machine (Framework Mini PC, Ryzen AI Max+ 395, 128 GB). You may encounter issues on different hardware configurations, Ubuntu versions, or network environments.
+
+**Found a bug?** Please [open an issue](https://github.com/kaka86mm/TitanVault/issues) with:
+- Your hardware info (`rocminfo | head`)
+- The failing phase and error log
+- Your Ubuntu version and preset choice
 
 ## 🤝 Contributing
 
