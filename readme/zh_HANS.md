@@ -23,10 +23,12 @@
 
 </div>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./portal-dashboard.png">
-  <img src="./portal-dashboard.png" width="800" alt="TitanVault 门户">
-</picture>
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./portal-dashboard.png">
+    <img src="./portal-dashboard.png" width="800" alt="TitanVault 门户">
+  </picture>
+</div>
 
 ---
 
