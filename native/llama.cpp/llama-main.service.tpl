@@ -28,7 +28,7 @@ ExecStart=/opt/llama.cpp/llama-server \
     --cache-type-k q4_0 --cache-type-v q4_0 \
     -b 8192 -ub 4096 \
     --jinja --slots --top-k 20 \
-    --reasoning off \
+    --reasoning on \
     --spec-type draft-mtp \
     --alias ${LLM_MODEL_NAME} \
     ${MMPROJ_ARG} \
