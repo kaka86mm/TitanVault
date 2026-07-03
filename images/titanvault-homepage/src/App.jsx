@@ -139,22 +139,20 @@ function ResourceStrip({ resources, infOpen, onToggleInf }) {
 // =============================================================
 function InfPanel({ open, onClose }) {
   const [data, setData] = useState({ models: [], totals: {}, breakdown: [] });
+  const [engine, setEngine] = useState(null);
 
   useEffect(() => {
     if (!open) return;
     const fetchData = async () => {
       const key = localStorage.getItem("mozin_key") || "";
       try {
-        // 模型列表
         const mr = await fetch("/llm/v1/models", { headers: { Authorization: "Bearer " + key } });
         const md = await mr.json();
         const modelIds = (md.data || []).map((m) => m.id);
-        // 用量统计
         const ur = await fetch("/usage/api/usage");
         const ud = await ur.json();
         const totals = ud.totals || {};
         const breakdown = ud.breakdown || [];
-        // 合并: 模型列表 + 用量 (按模型名匹配)
         const usageMap = {};
         breakdown.forEach((b) => {
           const name = (b.group || "").replace(/^openai\//, "").replace(/^deepseek\//, "");
@@ -165,16 +163,36 @@ function InfPanel({ open, onClose }) {
         const models = modelIds.map((id) => {
           const u = usageMap[id] || { tokens: 0, requests: 0 };
           const isEmbed = id.toLowerCase().includes("embed");
-          return {
-            name: id,
-            provider: isEmbed ? "llama.cpp" : "LiteLLM",
-            type: "local",
-            status: "active",
-            tokens: u.tokens,
-            requests: u.requests,
-          };
+          return { name: id, provider: isEmbed ? "llama.cpp" : "LiteLLM", type: "local", status: "active", tokens: u.tokens, requests: u.requests };
         });
         setData({ models, totals, breakdown });
+      } catch (e) {}
+      // llama.cpp 引擎指标
+      try {
+        const sr = await fetch("/llm-stats/slots");
+        const slots = await sr.json();
+        const mr2 = await fetch("/llm-stats/metrics");
+        const metricsText = await mr2.text();
+        const metrics = {};
+        metricsText.split("\n").forEach((line) => {
+          const m = line.match(/^([a-zA-Z0-9_:]+)\s+([\d.]+)/);
+          if (m) metrics[m[1]] = parseFloat(m[2]);
+        });
+        const busy = slots.filter((s) => s.is_processing).length;
+        const totalPrompt = slots.reduce((a, s) => a + (s.n_prompt_tokens || 0), 0);
+        const cached = slots.reduce((a, s) => a + (s.n_prompt_tokens_cache || 0), 0);
+        const processed = slots.reduce((a, s) => a + (s.n_prompt_tokens_processed || 0), 0);
+        setEngine({
+          prefillTps: Math.round(metrics["llamacpp:prompt_tokens_seconds"] || 0),
+          decodeTps: Math.round(metrics["llamacpp:predicted_tokens_seconds"] || 0),
+          promptTotal: Math.round(metrics["llamacpp:prompt_tokens_total"] || 0),
+          predictedTotal: Math.round(metrics["llamacpp:tokens_predicted_total"] || 0),
+          busySlots: busy,
+          totalSlots: slots.length,
+          maxCtx: Math.round(metrics["llamacpp:n_tokens_max"] || 0),
+          cacheHitRate: totalPrompt > 0 ? Math.round((cached / totalPrompt) * 100) : 0,
+          avgBusy: (metrics["llamacpp:n_busy_slots_per_decode"] || 0).toFixed(2),
+        });
       } catch (e) {}
     };
     fetchData();
@@ -201,6 +219,21 @@ function InfPanel({ open, onClose }) {
         <div className="llm-summary-item"><div className="value">{fmt(t.completion_tokens)}</div><div className="label">生成 Tokens</div></div>
         <div className="llm-summary-item"><div className="value">{fmt(t.failed_requests)}</div><div className="label">失败请求</div></div>
       </div>
+      {engine && (
+        <div className="llm-engine-stats">
+          <div className="llm-engine-title">⚡ llama.cpp 引擎</div>
+          <div className="llm-engine-grid">
+            <div className="llm-engine-item"><div className="value" style={{ color: "var(--accent)" }}>{engine.prefillTps}</div><div className="label">prefill tok/s</div></div>
+            <div className="llm-engine-item"><div className="value" style={{ color: "var(--accent)" }}>{engine.decodeTps}</div><div className="label">decode tok/s</div></div>
+            <div className="llm-engine-item"><div className="value" style={{ color: engine.cacheHitRate > 50 ? "var(--success)" : "var(--fg-muted)" }}>{engine.cacheHitRate}%</div><div className="label">缓存命中</div></div>
+            <div className="llm-engine-item"><div className="value">{engine.busySlots}/{engine.totalSlots}</div><div className="label">并发 slot</div></div>
+            <div className="llm-engine-item"><div className="value">{engine.avgBusy}</div><div className="label">平均并发</div></div>
+            <div className="llm-engine-item"><div className="value">{fmt(engine.promptTotal)}</div><div className="label">累计 prompt</div></div>
+            <div className="llm-engine-item"><div className="value">{fmt(engine.predictedTotal)}</div><div className="label">累计生成</div></div>
+            <div className="llm-engine-item"><div className="value">{fmt(engine.maxCtx)}</div><div className="label">峰值上下文</div></div>
+          </div>
+        </div>
+      )}
       <div className="llm-table-wrap">
         <table className="llm-table">
           <thead><tr><th>模型</th><th>提供方</th><th>状态</th><th style={{ textAlign: "right" }}>总请求</th><th style={{ textAlign: "right" }}>总 Tokens</th></tr></thead>
