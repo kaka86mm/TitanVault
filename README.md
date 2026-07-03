@@ -87,6 +87,8 @@ bash install.sh
 
 The installer guides you through preset selection, installs GPU drivers, builds images, downloads models, and starts everything. First install: ~1 hour. Reinstalls with cached assets: ~15 minutes.
 
+> **📦 Offline install (China):** If Docker Hub is blocked, download the [offline image pack](https://github.com/kaka86mm/TitanVault/releases/tag/v0.2.0) (1.5GB) and place it in `images/offline/`. The installer auto-loads it. Without it, a 4-source mirror fallback still works but some niche images may fail to pull.
+
 <details>
 <summary><b>📋 Installation phases</b></summary>
 
