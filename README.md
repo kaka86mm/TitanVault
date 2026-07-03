@@ -70,7 +70,7 @@ TitanVault isn't just glue around existing tools — it includes several **origi
 | Component | What it does | Source |
 |---|---|---|
 | **[TitanVault Portal](images/titanvault-homepage/)** | Custom React dashboard: service cards with brand icons, AI assistant chat, LLM usage panel, real-time uptime | [`images/titanvault-homepage/`](images/titanvault-homepage/) |
-| **[Aham Voice](images/aham-voice-web/)** | Full-stack meeting intelligence: audio upload → transcription → speaker diarization → emotion detection → AI-generated meeting minutes (ROCm GPU) | [`images/aham-voice-web/`](images/aham-voice-web/) |
+| **[Aham Voice](https://github.com/kaka86mm/aham-voice-web)** | Full-stack meeting intelligence: audio upload → transcription → speaker diarization → emotion detection → AI-generated meeting minutes (ROCm GPU) | [kaka86mm/aham-voice-web](https://github.com/kaka86mm/aham-voice-web) · [local mirror](images/aham-voice-web/) |
 | **[SenseVoice](images/sensevoice/)** | Lightweight ASR API service: real-time speech-to-text with emotion and event detection | [`images/sensevoice/`](images/sensevoice/) |
 | **[Token Usage API](images/token-usage-api/)** | LLM consumption tracker: aggregates LiteLLM spend logs into a clean dashboard | [`images/token-usage-api/`](images/token-usage-api/) |
 | **[API Discover](images/api-discover/)** | Auto-generated API explorer: discovers all services, tests endpoints, renders interactive docs | [`images/api-discover/`](images/api-discover/) |
