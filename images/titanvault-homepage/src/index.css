@@ -461,6 +461,43 @@ color: var(--fg-muted);
 margin-top: 2px;
 }
 .llm-table-wrap { overflow-x: auto; }
+.llm-engine-stats {
+margin: 12px 0;
+padding: 10px 12px;
+background: var(--bg-elevated);
+border-radius: 8px;
+border: 1px solid var(--border-subtle);
+}
+.llm-engine-title {
+font-size: var(--text-xs);
+font-weight: 600;
+color: var(--fg-muted);
+text-transform: uppercase;
+letter-spacing: 0.05em;
+margin-bottom: 8px;
+}
+.llm-engine-grid {
+display: grid;
+grid-template-columns: repeat(4, 1fr);
+gap: 8px;
+}
+.llm-engine-item {
+text-align: center;
+}
+.llm-engine-item .value {
+font-size: 18px;
+font-weight: 700;
+font-family: var(--font-mono);
+color: var(--fg);
+}
+.llm-engine-item .label {
+font-size: 10px;
+color: var(--fg-muted);
+margin-top: 1px;
+}
+@media (max-width: 600px) {
+.llm-engine-grid { grid-template-columns: repeat(3, 1fr); }
+}
 .llm-table {
 width: 100%;
 border-collapse: collapse;
