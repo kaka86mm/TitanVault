@@ -63,9 +63,16 @@ def get_model():
 
         logger.info("Loading SenseVoiceSmall + VAD...")
         t0 = time.time()
+        # modelscope snapshot_download 下载到 MODEL_DIR/iic/<name>, 路径含 iic/ 前缀
+        # 先找扁平路径 (兼容手动放置), 再找 iic/ 子目录 (modelscope 下载格式)
+        def _find_model(name):
+            for p in [os.path.join(MODEL_DIR, name), os.path.join(MODEL_DIR, "iic", name)]:
+                if os.path.isdir(p) and os.listdir(p):
+                    return p
+            return name  # fallback: 让 funasr 自己下载
         model = AutoModel(
-            model=os.path.join(MODEL_DIR, "SenseVoiceSmall"),
-            vad_model=os.path.join(MODEL_DIR, "speech_fsmn_vad_zh-cn-16k-common-pytorch"),
+            model=_find_model("SenseVoiceSmall"),
+            vad_model=_find_model("speech_fsmn_vad_zh-cn-16k-common-pytorch"),
             vad_kwargs={"max_single_segment_time": 30000},
             device=DEVICE,
             ncpu=NCPU,
