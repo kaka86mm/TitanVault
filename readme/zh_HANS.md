@@ -196,6 +196,20 @@ flowchart TD
 
 > 仅支持 Ryzen AI Max+ 395。安装器在阶段 0 验证 GPU 型号，不匹配会终止。其它硬件不支持。
 
+### 🇨🇳 国内用户说明
+
+Docker Hub 和 GitHub 在国内经常慢或不可达。TitanVault 通过多重 fallback 应对：
+
+- **Docker 镜像**：4 源自动 failover（`1ms.run` → `1panel.live` → `xuanyuan.me` → `daocloud`）
+- **模型下载**：安装时选 `cn`，从 ModelScope 下载（而非 HuggingFace）
+- **npm 包**（browser-use）：用 `registry.npmmirror.com`
+- **PyPI 包**：用清华/阿里云镜像
+- **GitHub 源码克隆**：多源 fallback（`github.com` → `ghfast.top` → `gh-proxy.com` → `gitee.com`）
+
+**离线包** — 如果镜像源全部失败，下载[离线镜像包](https://github.com/kaka86mm/TitanVault/releases/tag/v0.2.0)放到 `images/offline/` 目录，安装器会自动 `docker load`。
+
+> 💡 GitHub Release 下载也可能慢。如遇此情况，可用 [ghproxy.com](https://ghproxy.com) 等加速服务。
+
 ## 📁 仓库结构
 
 ```
@@ -222,6 +236,15 @@ TitanVault/
 | [运维手册](../docs/operations.md) | 日常管理 |
 | [故障排查](../docs/troubleshooting.md) | 常见问题与修复 |
 | [自定义配置](../docs/customize.md) | 模型、端口、密码 |
+
+## ⚠️ 项目状态
+
+本项目处于早期阶段。目前仅在作者的机器上测试过（Framework 迷你主机，Ryzen AI Max+ 395，128GB 内存）。在不同硬件配置、Ubuntu 版本或网络环境下可能存在问题。
+
+**遇到问题？** 欢迎[提 issue](https://github.com/kaka86mm/TitanVault/issues)，请附上：
+- 硬件信息（`rocminfo | head`）
+- 失败的阶段和错误日志
+- Ubuntu 版本和安装档位
 
 ## 🤝 贡献
 
