@@ -87,6 +87,8 @@ bash install.sh
 
 安装器引导你选择档位、安装 GPU 驱动、构建镜像、下载模型、启动全部服务。首次安装约 1 小时，利用缓存的重装约 15 分钟。
 
+> **📦 离线安装（国内）：** 如果 Docker Hub 被墙，下载[离线镜像包](https://github.com/kaka86mm/TitanVault/releases/tag/v0.2.0)（1.5GB）放到 `images/offline/` 目录，安装器会自动加载。不下载也能装，4 源镜像 fallback 兜底，但冷门镜像可能拉取失败。
+
 <details>
 <summary><b>📋 安装阶段明细</b></summary>
 
