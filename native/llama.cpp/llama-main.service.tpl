@@ -26,7 +26,7 @@ ExecStart=/opt/llama.cpp/llama-server \
     -ngl ${LLM_NGL} -c ${LLM_CTX} \
     --parallel ${LLAMA_MAIN_SLOTS} -fa on \
     --cache-type-k q4_0 --cache-type-v q4_0 \
-    -b 8192 -ub 2048 \
+    -b 8192 -ub 8192 \
     --jinja --slots --top-k 20 \
     --reasoning off \
     --spec-type draft-mtp \
