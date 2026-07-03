@@ -26,7 +26,30 @@ for arg in "$@"; do
     esac
 done
 
-[ -d "$OFFLINE_DIR" ] || { echo "离线镜像目录不存在: $OFFLINE_DIR"; exit 0; }
+[ -d "$OFFLINE_DIR" ] || mkdir -p "$OFFLINE_DIR"
+
+# 自动下载缺失的离线包 (从 GitHub Release, 解决 git clone 不含大文件的问题)
+# 仅在包不存在且非 --check 模式时尝试下载
+GITHUB_RELEASE="${GITHUB_RELEASE:-https://github.com/kaka86mm/TitanVault/releases/download/v0.2.0}"
+if [ "$CHECK_ONLY" = false ]; then
+    for pkg in standard-offline-images.tar.gz build-base-offline-images.tar.gz; do
+        if [ ! -f "$OFFLINE_DIR/$pkg" ]; then
+            # 跳过标准档 (1.5GB 太大) 除非用户明确要求
+            if [ "$pkg" = "standard-offline-images.tar.gz" ] && [ "${DOWNLOAD_STANDARD:-0}" != "1" ]; then
+                echo "[offline] $pkg 未找到 (1.5GB, 不自动下载)。"
+                echo "  手动下载: wget -P $OFFLINE_DIR $GITHUB_RELEASE/$pkg"
+                continue
+            fi
+            echo "[offline] 下载 $pkg (从 GitHub Release)..."
+            if curl -sfL --max-time 600 -o "$OFFLINE_DIR/$pkg" "$GITHUB_RELEASE/$pkg"; then
+                echo "[offline]   ✅ $pkg 下载完成"
+            else
+                echo "[offline]   ⚠️ $pkg 下载失败, 跳过 (镜像源 fallback 兜底)"
+                rm -f "$OFFLINE_DIR/$pkg"
+            fi
+        fi
+    done
+fi
 
 # 统计: tar.gz 里有哪些镜像 (docker save 的 manifest), 对照本地已有, 报缺失
 count_loaded=0; count_skipped=0; count_missing=0
