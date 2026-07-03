@@ -62,6 +62,10 @@
 	handle_path /usage/* {
 		reverse_proxy token-usage-api:8090
 	}
+	# llama.cpp 指标 (/metrics Prometheus + /slots 缓存状态), 门户 dashboard 用
+	handle_path /llm-stats/* {
+		reverse_proxy host-gateway:8082
+	}
 	# Reranker: litellm cohere provider 发 /rerank/v2/rerank, llama.cpp 只有 /v1/rerank
 	# caddy 把任意 /rerank/* 重写为 /v1/rerank, 转给宿主机 llama.cpp rerank 服务
 	handle /rerank/* {
