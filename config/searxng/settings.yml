@@ -32,10 +32,12 @@ ui:
   default_theme: simple
 
 outgoing:
-  # 国内引擎直连即可, 不需要代理。如需代理 (如同时用 google), 取消下面注释:
-  # proxies:
-  #   all://: "http://mihomo:7890"
-  request_timeout: 8.0   # 国内引擎响应快, 8s 够 (默认 3s 太短会误超时)
+  # 全局走 mihomo 代理 (host 模式, allow-lan 后监听 0.0.0.0:7890)。
+  # 让 google/wikipedia/duckduckgo 等国外引擎可用。
+  # SearXNG 容器走 mozin bridge, 用 host-gateway:7890 访问 (需 extra_hosts 配置)。
+  proxies:
+    all://: "http://host-gateway:7890"
+  request_timeout: 8.0
   max_request_timeout: 15.0
 
 # 引擎筛选: 国内可达的启用, 国外不可达的禁用 (避免每次搜索都等超时)
@@ -73,18 +75,16 @@ engines:
   - name: startpage
     disabled: true
 
-  # === 国外不可达引擎 (禁用, 避免每次搜索等超时拖慢) ===
+  # === 国外引擎 (现在走 mihomo 代理, 重新启用) ===
   - name: google
-    disabled: true
-  - name: google images
-    disabled: true
-  - name: google news
-    disabled: true
-  - name: google videos
-    disabled: true
+    disabled: false
+    timeout: 8
   - name: duckduckgo
-    disabled: true
+    disabled: false
+    timeout: 8
+  - name: wikipedia
+    disabled: false
+    timeout: 10
   - name: brave
-    disabled: true
-  - name: wikidata
-    disabled: true
+    disabled: false
+    timeout: 8

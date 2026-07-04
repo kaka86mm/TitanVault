@@ -30,6 +30,9 @@ services:
     image: searxng/searxng:latest
     profiles: [apps]
     restart: unless-stopped
+    extra_hosts:
+      # 让 searxng 能访问 host 模式的 mihomo 代理 (outgoing.proxies: host-gateway:7890)
+      - "host-gateway:host-gateway"
     environment:
       # basex-url 设置 (新版 searxng 需要正确生成搜索链接)
       - SEARXNG_BASE_URL=http://${HOST_IP:-localhost}:8087/
