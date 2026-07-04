@@ -17,6 +17,10 @@ MINERU_URL = os.environ.get("MINERU_URL", "http://host-gateway:18080")
 # Jina Reader (agent-reach 的 web 渠道后端): 能读 JS 渲染页面, 返回干净 markdown。
 # 走 mihomo 代理 (r.jina.ai 国内不可达)。
 JINA_READER_URL = os.environ.get("JINA_READER_URL", "https://r.jina.ai")
+# Exa 语义搜索 (agent-reach search 渠道, 通过宿主 mcporter 调用)
+EXA_MCPORTER_URL = os.environ.get("EXA_MCPORTER_URL", "http://host-gateway:18061")
+# agent-reach bridge (宿主 :18061, 转发到 Exa/Twitter/小红书)
+REACH_BRIDGE_URL = os.environ.get("REACH_BRIDGE_URL", "http://host-gateway:18061")
 # HTTP/HTTPS 代理 (mihomo, host 模式监听宿主 7890)
 HTTP_PROXY = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy") or "http://host-gateway:7890"
 PROXIES = {"http": HTTP_PROXY, "https": HTTP_PROXY} if HTTP_PROXY else None
@@ -63,6 +67,135 @@ def search(query: str, skip_queries: list = None) -> dict:
             "snippet": r.get("content", "")[:200],
         })
     return {"query": query, "results": results}
+
+
+def exa_search(query: str, num: int = 5) -> dict:
+    """Exa 语义搜索 (agent-reach)。擅长英文/技术/代码, 返回高质量结果+高亮。
+    通过宿主 agent-reach-bridge 调用 mcporter → Exa MCP。
+    返回 {"query", "results": [{"title","url","snippet"}]}.
+    """
+    try:
+        resp = requests.post(
+            f"{REACH_BRIDGE_URL}/exa",
+            json={"query": query, "num": num},
+            timeout=50, proxies=None,  # bridge 在宿主, 不走代理
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return {"query": query, "results": [], "error": f"Exa bridge: {e}"}
+
+    if not data.get("ok"):
+        return {"query": query, "results": [],
+                "error": data.get("error", "Exa failed")}
+
+    # bridge 返回 mcporter 的纯文本输出 (Title:/URL:/Highlights: 格式)
+    raw = data.get("raw", "")
+    results = _parse_exa_output(raw)
+    return {"query": query, "results": results, "source": "exa"}
+
+
+def _parse_exa_output(raw: str) -> list:
+    """解析 mcporter exa 输出 (Title:/URL:/Highlights: 块)。"""
+    results = []
+    blocks = re.split(r"\n(?=Title:)", raw.strip())
+    for b in blocks:
+        title = re.search(r"^Title:\s*(.*)", b, re.MULTILINE)
+        url = re.search(r"^URL:\s*(.*)", b, re.MULTILINE)
+        highlights = re.search(r"^Highlights:\s*\n?(.*?)(?=\n[A-Z]|\Z)", b, re.DOTALL)
+        if title and url:
+            results.append({
+                "title": title.group(1).strip()[:120],
+                "url": url.group(1).strip(),
+                "snippet": (highlights.group(1).strip() if highlights else "")[:200],
+            })
+    return results
+
+
+def twitter_search(query: str, num: int = 10) -> dict:
+    """Twitter/X 搜索 (agent-reach)。通过宿主 twitter-cli。
+    返回 {"query", "results": [{"title","url","snippet"}]}.
+    """
+    try:
+        resp = requests.post(
+            f"{REACH_BRIDGE_URL}/twitter",
+            json={"query": query, "num": num},
+            timeout=50, proxies=None,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return {"query": query, "results": [], "error": f"Twitter bridge: {e}"}
+
+    if not data.get("ok"):
+        return {"query": query, "results": [],
+                "error": data.get("error", "twitter-cli failed")}
+
+    raw = data.get("raw", "")
+    results = _parse_twitter_output(raw)
+    return {"query": query, "results": results, "source": "twitter"}
+
+
+def _parse_twitter_output(raw: str) -> list:
+    """解析 twitter-cli yaml 输出, 提取推文。"""
+    results = []
+    # twitter-cli yaml 每条推文有 text/url/id 字段
+    # 简单按双换行分块提取
+    for block in raw.split("\n---\n"):
+        text_m = re.search(r"(?:text|content|full_text):\s*[\"']?(.*?)(?:[\"']?\s*$)", block, re.MULTILINE)
+        url_m = re.search(r"url:\s*(https?://\S+)", block)
+        if text_m:
+            text = text_m.group(1).strip()
+            results.append({
+                "title": text[:100],
+                "url": url_m.group(1).strip() if url_m else "",
+                "snippet": text[:200],
+            })
+    return results[:10]
+
+
+def xiaohongshu_search(query: str) -> dict:
+    """小红书搜索 (agent-reach)。通过宿主 xiaohongshu-mcp。
+    返回 {"query", "results": [{"title","url","snippet"}]}.
+    """
+    try:
+        resp = requests.post(
+            f"{REACH_BRIDGE_URL}/xiaohongshu",
+            json={"query": query},
+            timeout=130, proxies=None,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return {"query": query, "results": [], "error": f"小红书 bridge: {e}"}
+
+    if not data.get("ok"):
+        return {"query": query, "results": [],
+                "error": data.get("error", "xiaohongshu-mcp failed")}
+
+    raw = data.get("raw", "")
+    results = _parse_xhs_output(raw)
+    return {"query": query, "results": results, "source": "xiaohongshu"}
+
+
+def _parse_xhs_output(raw: str) -> list:
+    """解析小红书 MCP 搜索结果。"""
+    results = []
+    # MCP 返回格式不定, 尽量提取 title/note_id/desc
+    blocks = re.split(r"\n(?=-\s*\{|\[?\{)", raw)
+    for b in blocks:
+        title_m = re.search(r'"(?:title|display_title|note_title)"\s*:\s*"([^"]+)"', b)
+        id_m = re.search(r'"(?:note_id|id|noteId)"\s*:\s*"([^"]+)"', b)
+        desc_m = re.search(r'"(?:desc|description|content)"\s*:\s*"([^"]*)"', b)
+        if title_m or desc_m:
+            title = (title_m.group(1) if title_m else "")[:100]
+            note_id = id_m.group(1) if id_m else ""
+            results.append({
+                "title": title,
+                "url": f"https://www.xiaohongshu.com/explore/{note_id}" if note_id else "",
+                "snippet": (desc_m.group(1) if desc_m else title)[:200],
+            })
+    return results[:10]
 
 
 def visit(url: str, goal: str = "") -> dict:

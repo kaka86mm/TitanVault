@@ -18,38 +18,34 @@ from datetime import datetime
 from openai import OpenAI
 
 from tools import search as tool_search, visit as tool_visit, \
+    exa_search as tool_exa, twitter_search as tool_twitter, \
+    xiaohongshu_search as tool_xhs, \
     verify_claim as tool_verify_claim, verify_url as tool_verify_url
 
 # ============================================================================
 # Prompts
 # ============================================================================
 
-INITIAL_PROMPT = """You are QUEST, a deep research agent. Your goal is to answer the user's question thoroughly using web search and page reading.
+INITIAL_PROMPT = """You are QUEST, a deep research agent. Answer the user's question by SEARCHING the web, reading pages, then writing a report.
 
-## Available Tools
-- search: Search the web. Input: {"name": "search", "arguments": {"query": ["query1", "query2"]}}
-- visit: Read webpage content. Input: {"name": "visit", "arguments": {"url": ["url1"], "goal": "what you need"}}
+## Tools (output <tool_call> to use one)
+- exa: BEST search (semantic, high quality). Example: <tool_call>{{"name":"exa","arguments":{{"query":["your query"]}}}}}}</tool_call>
+- search: Web search (google/bing). Same format, name="search".
+- twitter: Twitter/X discussions & opinions. name="twitter".
+- xiaohongshu: 小红书 Chinese lifestyle reviews. name="xiaohongshu".
+- visit: Read a URL. {{"name":"visit","arguments":{{"url":["URL"],"goal":"..."}}}}
+
+## RULES
+1. You MUST call tools. Do NOT answer from memory.
+2. Start with exa (best results), then use search for follow-ups.
+3. If topic involves opinions/discussions → also call twitter.
+4. Call at least 2 searches before writing report.
 
 ## Process
-1. Break down the question into sub-questions
-2. Search for information on each sub-question
-3. Visit relevant pages to read details
-4. Cross-reference and verify findings
-5. Synthesize a comprehensive answer with citations
+Search → read results → search more → visit key pages → write report with [source: URL] citations.
 
-## Output Format
-When you have gathered enough information, write your final report in markdown:
-- Start with a direct answer summary
-- Include detailed findings with [source: URL] citations
-- Note any conflicting information or gaps
+When you have enough info, STOP calling tools and write the report in markdown."""
 
-To call a tool, output:
-<tool_call>
-{"name": "search", "arguments": {"query": ["your query"]}}
-</tool_call>
-
-After receiving tool results, continue researching or write your final report.
-When you have enough info, STOP calling tools and write the report directly."""
 
 ITERATE_PROMPT = """You are QUEST, a deep research agent. The user wants to IMPROVE an existing research report.
 
@@ -74,6 +70,9 @@ When done, output the COMPLETE updated report in markdown.
 
 ## Available Tools
 - search: {{"name": "search", "arguments": {{"query": ["query"]}}}}
+- exa: {{"name": "exa", "arguments": {{"query": ["query"]}}}} (semantic search, English/technical)
+- twitter: {{"name": "twitter", "arguments": {{"query": ["query"]}}}} (social discussions)
+- xiaohongshu: {{"name": "xiaohongshu", "arguments": {{"query": ["query"]}}}} (中文生活消费)
 - visit: {{"name": "visit", "arguments": {{"url": ["url"], "goal": "..."}}}}
 
 To call a tool:
@@ -457,12 +456,18 @@ class ResearchAgent:
         return "\n".join(lines)
 
     def _parse_tool_call(self, text: str):
-        """从 LLM 输出解析 <tool_call>{...}</tool_call>。"""
+        """从 LLM 输出解析 <tool_call>{...}</tool_call>。
+
+        QUEST 常模仿 prompt 里的 {{}} 转义格式, 这里统一还原成单花括号再解析。
+        """
         matches = re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", text, re.DOTALL)
         if not matches:
             return None
+        raw = matches[-1].strip()
+        # 还原双花括号 (QUEST 从 prompt 的 format string 转义学到 {{}})
+        raw = raw.replace("{{", "{").replace("}}", "}")
         try:
-            call = json.loads(matches[-1].strip())
+            call = json.loads(raw)
             if not isinstance(call, dict):
                 return None
             name = call.get("name")
@@ -523,6 +528,63 @@ class ResearchAgent:
                 else:
                     emit({"type": "visit_done", "url": u, "error": r.get("error", "failed")})
             return "\n\n---\n\n".join(all_content) if all_content else "[No content]"
+
+        elif name == "exa":
+            # Exa 语义搜索 (擅长英文/技术/代码, 高质量)
+            queries = args.get("query", [])
+            if isinstance(queries, str):
+                queries = [queries]
+            all_results = []
+            for q in queries[:3]:
+                emit({"type": "search", "query": q, "engine": "exa"})
+                r = tool_exa(q, num=5)
+                context.add_search(q)
+                if r.get("results"):
+                    all_results.append(self._format_search_results(r))
+                    emit({"type": "search_done", "query": q,
+                          "count": len(r["results"]), "engine": "exa"})
+                else:
+                    emit({"type": "search_done", "query": q, "count": 0,
+                          "engine": "exa", "error": r.get("error", "")})
+            return "\n\n".join(all_results) if all_results else "[Exa: no results]"
+
+        elif name == "twitter":
+            # Twitter/X 搜索 (社交媒体讨论/观点)
+            queries = args.get("query", [])
+            if isinstance(queries, str):
+                queries = [queries]
+            all_results = []
+            for q in queries[:2]:
+                emit({"type": "search", "query": q, "engine": "twitter"})
+                r = tool_twitter(q, num=10)
+                context.add_search(f"twitter:{q}")
+                if r.get("results"):
+                    all_results.append(self._format_search_results(r))
+                    emit({"type": "search_done", "query": q,
+                          "count": len(r["results"]), "engine": "twitter"})
+                else:
+                    emit({"type": "search_done", "query": q, "count": 0,
+                          "engine": "twitter", "error": r.get("error", "")})
+            return "\n\n".join(all_results) if all_results else "[Twitter: no results or not authenticated]"
+
+        elif name == "xiaohongshu":
+            # 小红书搜索 (中文生活消费/真实体验)
+            queries = args.get("query", [])
+            if isinstance(queries, str):
+                queries = [queries]
+            all_results = []
+            for q in queries[:2]:
+                emit({"type": "search", "query": q, "engine": "xiaohongshu"})
+                r = tool_xhs(q)
+                context.add_search(f"xhs:{q}")
+                if r.get("results"):
+                    all_results.append(self._format_search_results(r))
+                    emit({"type": "search_done", "query": q,
+                          "count": len(r["results"]), "engine": "xiaohongshu"})
+                else:
+                    emit({"type": "search_done", "query": q, "count": 0,
+                          "engine": "xiaohongshu", "error": r.get("error", "")})
+            return "\n\n".join(all_results) if all_results else "[小红书: no results or not logged in]"
 
         return f"[Unknown tool: {name}]"
 
