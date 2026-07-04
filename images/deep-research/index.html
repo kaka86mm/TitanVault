@@ -83,7 +83,8 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
   border-color: var(--accent); }
 .welcome-box button { margin-top: var(--space-3); padding: var(--space-3) var(--space-6);
   background: var(--accent); color: #fff; border: none; border-radius: var(--radius-md);
-  font-weight: 600; font-size: var(--text-base); cursor: pointer; transition: all 0.15s; }
+  font-weight: 600; font-size: var(--text-base); cursor: pointer; transition: all 0.15s;
+  position: relative; z-index: 5; }
 .welcome-box button:hover { filter: brightness(1.1); }
 .welcome-box button:disabled { opacity: 0.5; cursor: not-allowed; }
 .examples { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; }
@@ -270,9 +271,8 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
       <h1>🔬 Deep Research</h1>
       <p>输入一个研究问题，QUEST-9B 会自主搜索网页、阅读详情、多轮迭代，生成带引用的研究报告。100% 本地运行。</p>
       <div class="welcome-box">
-        <textarea id="welcomeInput" placeholder="输入研究问题，如：RDNA 4 相比 3.5 有哪些改进？" 
-          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitWelcome()}"></textarea>
-        <button onclick="submitWelcome()" id="welcomeSubmit">开始研究</button>
+        <textarea id="welcomeInput" placeholder="输入研究问题，如：RDNA 4 相比 3.5 有哪些改进？"></textarea>
+        <button onclick="submitWelcome()" id="welcomeSubmit" style="display:inline-block;width:auto;">开始研究</button>
         <div class="attach-area">
           <label class="attach-upload">📎 添加研究资料 (PDF/DOCX/TXT)
             <input type="file" id="welcomeFile" multiple accept=".pdf,.docx,.txt,.md" style="display:none"
@@ -331,8 +331,16 @@ function toggleTheme() {
 applyTheme();
 
 // ── API ──
+// 自动检测部署前缀: 若页面在 /research/ 下提供,API 需带 /research 前缀
+const BASE = (function(){
+  const p = location.pathname.replace(/\/index\.html$/, '/');
+  // 找到包含 index 的目录前缀 (如 /research/)
+  const m = p.match(/^(.*\/)[^/]*$/);
+  const dir = m ? m[1] : '/';
+  return dir;  // /research/ 或 /
+})();
 async function api(path, opts = {}) {
-  const r = await fetch(path, { headers: {'Content-Type':'application/json'}, ...opts });
+  const r = await fetch(BASE + path.replace(/^\//, ''), { headers: {'Content-Type':'application/json'}, ...opts });
   return r.json();
 }
 
@@ -420,7 +428,7 @@ async function openSession(sid, presetQuestion) {
 
 function connectSSE(sid) {
   if (eventSource) eventSource.close();
-  eventSource = new EventSource(`/api/sessions/${sid}/stream`);
+  eventSource = new EventSource(BASE + `api/sessions/${sid}/stream`);
   eventSource.onmessage = (e) => {
     const event = JSON.parse(e.data);
     handleEvent(event);
