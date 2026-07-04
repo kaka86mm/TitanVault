@@ -28,6 +28,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from agent import ResearchAgent, ResearchContext
+from tools import preprocess_attachment
+import scheduler as sched
+import base64
 
 # ============================================================================
 # 配置
@@ -90,15 +93,34 @@ _load_all_sessions()
 
 
 # ============================================================================
-# Models
+# 定时研究调度器
+# ============================================================================
+
+def _scheduled_run_callback(sid: str, question: str, attachments=None,
+                             is_scheduled=False):
+    """定时任务回调: 创建 session + 跑 agent (同步, 在 scheduler 线程)。"""
+    ctx = ResearchContext(sid)
+    if attachments:
+        for att in attachments:
+            ctx.add_attachment(att.get("filename", ""), att.get("md", ""),
+                              att.get("source_type", "text"))
+    sessions[sid] = ctx
+    event_queues[sid] = asyncio.Queue()
+    _save_session(ctx)
+    _run_agent_thread(sid, question, False)
+
+
+sched.init_scheduler(_scheduled_run_callback)
 # ============================================================================
 
 class CreateSession(BaseModel):
     question: str
+    attachments: Optional[list] = None  # [{filename, content_b64}]
 
 
 class SendMessage(BaseModel):
     content: str
+    attachments: Optional[list] = None
 
 
 class IngestRequest(BaseModel):
@@ -110,10 +132,14 @@ class IngestRequest(BaseModel):
 # Agent 运行 (后台线程)
 # ============================================================================
 
-def _run_agent_thread(session_id: str, question: str, is_followup: bool):
+def _run_agent_thread(session_id: str, question: str, is_followup: bool = False):
     """在后台线程跑 agent, 事件推入 asyncio.Queue。"""
     ctx = sessions[session_id]
     loop = asyncio.new_event_loop()
+
+    # 确保 event_queue 存在 (定时任务可能没预创建)
+    if session_id not in event_queues:
+        event_queues[session_id] = asyncio.Queue()
 
     async def push(event):
         q = event_queues.get(session_id)
@@ -174,6 +200,24 @@ async def create_session(req: CreateSession):
     ctx = ResearchContext(sid)
     sessions[sid] = ctx
     event_queues[sid] = asyncio.Queue()
+
+    # 处理附件 (预处理: PDF→MinerU, DOCX→python-docx, TXT→直读)
+    if req.attachments:
+        for att in req.attachments:
+            filename = att.get("filename", "unknown")
+            content_b64 = att.get("content_b64", "")
+            try:
+                content_bytes = base64.b64decode(content_b64)
+                result = preprocess_attachment(filename, content_bytes)
+                if result.get("md"):
+                    ctx.add_attachment(filename, result["md"],
+                                      result.get("source_type", "text"))
+                else:
+                    ctx.add_attachment(filename,
+                                      f"[附件解析失败: {result.get('error','')}]", "error")
+            except Exception as e:
+                ctx.add_attachment(filename, f"[附件处理异常: {e}]", "error")
+
     _save_session(ctx)
 
     # 后台启动 agent
@@ -181,7 +225,8 @@ async def create_session(req: CreateSession):
                          daemon=True)
     t.start()
 
-    return {"session_id": sid, "status": "running", "question": req.question}
+    return {"session_id": sid, "status": "running", "question": req.question,
+            "attachments": len(ctx.attachments)}
 
 
 @app.get("/api/sessions")
@@ -309,6 +354,75 @@ async def ingest_report(req: IngestRequest):
             return {"status": "error", "code": r.status_code, "body": r.text[:200]}
         except Exception as e:
             return {"status": "error", "message": str(e)}
+
+
+# ============================================================================
+# 定时研究
+# ============================================================================
+
+class CreateSchedule(BaseModel):
+    question: str
+    interval: str = "daily"  # daily/weekly/12h/6h/数字
+    focus: str = ""
+    attachments: Optional[list] = None
+
+
+@app.post("/api/schedules")
+async def create_schedule(req: CreateSchedule):
+    # 预处理附件
+    processed_attachments = []
+    if req.attachments:
+        for att in req.attachments:
+            filename = att.get("filename", "unknown")
+            content_b64 = att.get("content_b64", "")
+            try:
+                content_bytes = base64.b64decode(content_b64)
+                result = preprocess_attachment(filename, content_bytes)
+                if result.get("md"):
+                    processed_attachments.append({
+                        "filename": filename,
+                        "md": result["md"][:5000],
+                        "source_type": result.get("source_type", "text"),
+                    })
+            except Exception:
+                pass
+
+    meta = sched.add_schedule(
+        question=req.question,
+        interval=req.interval,
+        focus=req.focus,
+        attachments=processed_attachments,
+    )
+    return meta
+
+
+@app.get("/api/schedules")
+async def list_schedules():
+    return sched.list_schedules()
+
+
+@app.delete("/api/schedules/{schedule_id}")
+async def delete_schedule(schedule_id: str):
+    ok = sched.remove_schedule(schedule_id)
+    if not ok:
+        raise HTTPException(404, "Schedule not found")
+    return {"deleted": schedule_id}
+
+
+@app.post("/api/schedules/{schedule_id}/pause")
+async def pause_schedule(schedule_id: str):
+    ok = sched.pause_schedule(schedule_id)
+    if not ok:
+        raise HTTPException(404, "Schedule not found")
+    return {"paused": schedule_id}
+
+
+@app.post("/api/schedules/{schedule_id}/resume")
+async def resume_schedule(schedule_id: str):
+    ok = sched.resume_schedule(schedule_id)
+    if not ok:
+        raise HTTPException(404, "Schedule not found")
+    return {"resumed": schedule_id}
 
 
 @app.get("/", response_class=HTMLResponse)

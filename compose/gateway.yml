@@ -121,8 +121,16 @@ services:
       LITELLM_URL: "http://host-gateway:4000/v1"
       LITELLM_KEY: "${LITELLM_MASTER_KEY}"
       ON_BASE_URL: "http://host-gateway:5055"
+      MINERU_URL: "http://host-gateway:18080"
       REPORTS_DIR: "/data/quest-reports"
       MAX_TURNS: "6"
+      # SMTP (邮件发送, 留空则不发邮件; 填了定时研究报告会自动发)
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      SMTP_TLS: "${SMTP_TLS:-true}"
     volumes:
       # 报告 + session 持久化
       - ${DATA_DIR:-/data}/quest-reports:/data/quest-reports

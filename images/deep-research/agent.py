@@ -17,7 +17,8 @@ from datetime import datetime
 
 from openai import OpenAI
 
-from tools import search as tool_search, visit as tool_visit
+from tools import search as tool_search, visit as tool_visit, \
+    verify_claim as tool_verify_claim, verify_url as tool_verify_url
 
 # ============================================================================
 # Prompts
@@ -99,6 +100,7 @@ class ResearchContext:
         self.visited_urls: Dict[str, str] = {}  # url -> content snippet
         self.versions: List[dict] = []
         self.current_version = 0
+        self.attachments: List[dict] = []  # [{filename, md, source_type}]
 
     @property
     def latest_report(self) -> str:
@@ -134,6 +136,26 @@ class ResearchContext:
             "timestamp": datetime.now().isoformat(),
         })
 
+    def add_attachment(self, filename: str, md: str, source_type: str):
+        self.attachments.append({
+            "filename": filename, "md": md, "source_type": source_type,
+        })
+
+    def format_attachments(self) -> str:
+        """格式化附件内容供 system prompt 注入。"""
+        if not self.attachments:
+            return ""
+        parts = ["\n\n## USER-PROVIDED DOCUMENTS (High Trust Source)"]
+        parts.append("The following documents are provided by the user. "
+                      "They have HIGHER credibility than web search results. "
+                      "Prioritize information from these documents and cite them as "
+                      "[📎 source: filename]. Cross-reference web search results "
+                      "against these documents when possible.\n")
+        for att in self.attachments:
+            content = att.get("md", "")[:5000]  # 每个附件截断到 5000 字符
+            parts.append(f"### [USER_DOCUMENT: {att['filename']}]\n{content}\n")
+        return "\n".join(parts)
+
     def summarize_visited(self, max_items: int = 10) -> str:
         """给 agent 的已有知识摘要。"""
         if not self.visited_urls:
@@ -154,6 +176,7 @@ class ResearchContext:
             "visited_urls": self.visited_urls,
             "versions": self.versions,
             "current_version": self.current_version,
+            "attachments": self.attachments,
         }
 
     @classmethod
@@ -166,6 +189,7 @@ class ResearchContext:
         ctx.visited_urls = d.get("visited_urls", {})
         ctx.versions = d.get("versions", [])
         ctx.current_version = d.get("current_version", 0)
+        ctx.attachments = d.get("attachments", [])
         return ctx
 
 
@@ -214,6 +238,11 @@ class ResearchAgent:
             skip_queries = []
             context = context or ResearchContext("temp")
 
+        # 注入用户附件 (高可信度知识)
+        attachment_text = context.format_attachments()
+        if attachment_text:
+            system = system + attachment_text
+
         def emit(event):
             if on_event:
                 on_event(event)
@@ -251,6 +280,8 @@ class ResearchAgent:
                 report = self._extract_report(reply)
                 if not report or len(report) < 20:
                     report = self._build_fallback_report(question, context)
+                # 幻觉验证
+                report = self._verify_report(report, context, emit)
                 context.add_version(report)
                 emit({"type": "report", "version": context.current_version,
                       "content": report, "changes": "initial" if not is_iteration else "updated"})
@@ -291,10 +322,100 @@ class ResearchAgent:
         if not report or len(report) < 50:
             report = self._build_fallback_report(question, context)
 
+        # 幻觉验证 (强制总结的也要验证)
+        report = self._verify_report(report, context, emit)
         context.add_version(report, changes="forced summary")
         emit({"type": "report", "version": context.current_version,
               "content": report, "changes": "forced"})
         return report
+
+    def _verify_report(self, report: str, context: ResearchContext,
+                       emit: Callable) -> str:
+        """幻觉抵御: 抽取关键事实声明 → 搜索引擎二次验证 → 追加验证摘要。
+
+        最多验证 8 个声明 (优先含数字/日期的)。验证结果追加到报告末尾。
+        """
+        emit({"type": "verify_start"})
+        claims = self._extract_claims(report)
+
+        if not claims:
+            emit({"type": "verify_done", "total": 0})
+            return report
+
+        # 最多 8 个
+        claims = claims[:8]
+        results = []
+
+        for claim in claims:
+            emit({"type": "verify", "claim": claim[:80]})
+            try:
+                vr = tool_verify_claim(claim)
+                results.append({"claim": claim, **vr})
+                emit({"type": "verify_done", "claim": claim[:80],
+                      "status": vr["status"], "evidence_count": len(vr.get("evidence", []))})
+            except Exception as e:
+                results.append({"claim": claim, "status": "unverified",
+                                "error": str(e)})
+                emit({"type": "verify_done", "claim": claim[:80],
+                      "status": "unverified", "error": str(e)})
+
+        # 验证 URL 引用可达性
+        url_claims = re.findall(r"\[source: (.+?)\]|🔗 (.+?)(?:\s|$)", report)
+        for url_group in url_claims[:5]:
+            url = url_group[0] or url_group[1]
+            if url.startswith("http"):
+                url_check = tool_verify_url(url)
+                if not url_check.get("reachable"):
+                    results.append({"claim": f"URL: {url}",
+                                    "status": "unverified",
+                                    "reason": "链接不可达"})
+
+        # 构造验证摘要
+        verified = sum(1 for r in results if r["status"] == "verified")
+        partial = sum(1 for r in results if r["status"] == "partial")
+        unverified = sum(1 for r in results if r["status"] == "unverified")
+
+        summary_lines = [
+            "\n\n---\n\n## 🔍 事实验证\n",
+            f"> 自动验证了 {len(results)} 个关键声明: "
+            f"✅ {verified} 已验证 / ⚠️ {partial} 部分验证 / ❌ {unverified} 未验证\n",
+        ]
+
+        for r in results:
+            status_icon = {"verified": "✅", "partial": "⚠️", "unverified": "❌"}.get(
+                r["status"], "❓")
+            summary_lines.append(f"- {status_icon} **{r['claim'][:100]}**")
+            if r.get("evidence"):
+                for ev in r["evidence"][:2]:
+                    summary_lines.append(f"  - [{ev.get('title','')[:50]}]({ev.get('url','')})")
+            elif r.get("reason"):
+                summary_lines.append(f"  - {r['reason']}")
+
+        emit({"type": "verify_done", "total": len(results),
+              "verified": verified, "partial": partial, "unverified": unverified})
+
+        return report + "\n".join(summary_lines)
+
+    def _extract_claims(self, report: str) -> list:
+        """从报告抽取需要验证的事实声明 (含数字/日期/百分比的句子)。"""
+        # 按句子分割
+        sentences = re.split(r"[。.!！?？\n]+", report)
+        claims = []
+        for s in sentences:
+            s = s.strip()
+            if len(s) < 15 or len(s) > 200:
+                continue
+            # 优先级: 含数字/百分比/日期/对比词
+            has_number = bool(re.search(r"\d+(?:\.\d+)?%?|¥|$", s))
+            has_date = bool(re.search(r"\d{4}\s*年|\d{1,2}\s*月|january|february|202[0-9]", s, re.I))
+            has_compare = bool(re.search(r"\b(?:more|less|faster|slower|better|worse|"
+                                          r"比|超过|低于|高于|提升|降低)\b", s, re.I))
+            if has_number or has_date or has_compare:
+                # 去掉 markdown 标记
+                clean = re.sub(r"[#*`\[\]()]|source:.*", "", s).strip()
+                if clean and len(clean) > 15:
+                    claims.append(clean)
+        return claims
 
     def _build_summary_prompt(self, question: str, context: ResearchContext,
                               is_iteration: bool) -> str:

@@ -120,6 +120,7 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
 .event-icon.visit { background: var(--teal-dim, rgba(45,212,191,0.1)); color: var(--teal); }
 .event-icon.thinking { background: var(--purple-dim); color: var(--purple); }
 .event-icon.report { background: var(--success-dim); color: var(--success); }
+.event-icon.verify { background: rgba(45,212,191,0.12); color: var(--teal); }
 .event-icon.error { background: var(--danger-dim); color: var(--danger); }
 .event-content { flex: 1; font-size: var(--text-sm); color: var(--fg-2); padding-top: 4px; }
 .event-content .query { font-family: var(--font-mono); color: var(--accent); }
@@ -188,6 +189,50 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
 ::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
 
 .hidden { display: none !important; }
+
+/* ── Schedule section ── */
+.schedule-section { border-top: 1px solid var(--border-subtle); padding: var(--space-3) var(--space-2); }
+.schedule-title { font-size: var(--text-xs); font-weight: 600; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--space-2) var(--space-2); }
+.schedule-item { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  margin-bottom: var(--space-1); font-size: var(--text-sm); }
+.schedule-item:hover { background: var(--surface-hover); }
+.schedule-item .sq { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.schedule-item .smeta { font-size: var(--text-xs); color: var(--fg-muted); display: flex; gap: var(--space-2); margin-top: 2px; }
+.schedule-item .sdel { color: var(--danger); cursor: pointer; font-size: var(--text-xs); }
+.schedule-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.schedule-modal .box { background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: var(--space-6); width: 90%; max-width: 480px; }
+.schedule-modal h3 { font-size: var(--text-lg); margin-bottom: var(--space-4); }
+.schedule-modal input, .schedule-modal select, .schedule-modal textarea {
+  width: 100%; padding: var(--space-3); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md); color: var(--fg); font-size: var(--text-sm); margin-bottom: var(--space-3); }
+.schedule-modal .btns { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
+.schedule-modal .btns button { flex: 1; padding: var(--space-3); border-radius: var(--radius-md);
+  border: none; font-weight: 600; cursor: pointer; }
+.schedule-modal .cancel { background: var(--surface); color: var(--fg-2); border: 1px solid var(--border); }
+.schedule-modal .confirm { background: var(--accent); color: #fff; }
+
+/* ── Attachments ── */
+.attach-area { margin-top: var(--space-2); }
+.attach-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.attach-chip { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-3);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-pill);
+  font-size: var(--text-xs); color: var(--fg-2); }
+.attach-chip .rm { cursor: pointer; color: var(--danger); margin-left: var(--space-1); }
+.attach-upload { font-size: var(--text-xs); color: var(--accent); cursor: pointer;
+  padding: var(--space-1) var(--space-2); border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  display: inline-block; }
+.attach-upload:hover { border-color: var(--accent); }
+.session-header .att-icon { font-size: 14px; color: var(--accent); cursor: help; }
+
+/* ── Verify badges ── */
+.verify-badge { font-size: 10px; padding: 1px 4px; border-radius: var(--radius-sm);
+  font-family: var(--font-mono); margin-left: 4px; }
+.verify-badge.v-ok { background: var(--success-dim); color: var(--success); }
+.verify-badge.v-warn { background: var(--warn-dim); color: var(--warn); }
+.verify-badge.v-fail { background: var(--danger-dim); color: var(--danger); }
 </style>
 </head>
 <body>
@@ -211,6 +256,11 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
       </button>
     </div>
     <div class="session-list" id="sessionList"></div>
+    <div class="schedule-section">
+      <div class="schedule-title">⏰ 定时研究</div>
+      <div id="scheduleList"></div>
+      <div class="schedule-item" style="cursor:pointer;text-align:center;color:var(--accent)" onclick="showScheduleModal()">+ 新建定时研究</div>
+    </div>
   </div>
 
   <!-- Main -->
@@ -223,6 +273,13 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
         <textarea id="welcomeInput" placeholder="输入研究问题，如：RDNA 4 相比 3.5 有哪些改进？" 
           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitWelcome()}"></textarea>
         <button onclick="submitWelcome()" id="welcomeSubmit">开始研究</button>
+        <div class="attach-area">
+          <label class="attach-upload">📎 添加研究资料 (PDF/DOCX/TXT)
+            <input type="file" id="welcomeFile" multiple accept=".pdf,.docx,.txt,.md" style="display:none"
+              onchange="handleFiles('welcome')">
+          </label>
+          <div class="attach-chips" id="welcomeChips"></div>
+        </div>
       </div>
       <div class="examples">
         <div class="example-chip" onclick="useExample('Vulkan 和 ROCm 在 LLM 推理上的性能差异')">Vulkan vs ROCm</div>
@@ -308,10 +365,13 @@ async function submitWelcome() {
   const q = document.getElementById('welcomeInput').value.trim();
   if (!q) return;
   document.getElementById('welcomeSubmit').disabled = true;
-  const r = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ question: q }) });
+  const attachments = pendingFiles.map(f => ({ filename: f.filename, content_b64: f.content_b64 }));
+  const r = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ question: q, attachments }) });
   if (r.session_id) {
     document.getElementById('welcomeInput').value = '';
     document.getElementById('welcomeSubmit').disabled = false;
+    pendingFiles = [];
+    renderChips('welcome');
     openSession(r.session_id, r.question);
   }
 }
@@ -440,6 +500,11 @@ function addActivity(type, data) {
     item.innerHTML = `<div class="event-row">
       <div class="event-icon error">⚠</div>
       <div class="event-content">${esc(data.message)}</div></div>`;
+  } else if (type === 'verify') {
+    item.innerHTML = `<div class="event-row">
+      <div class="event-icon verify">🛡</div>
+      <div class="event-content">${esc(data.label || '验证中...')}
+        <div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`;
   }
   stream.appendChild(item);
   stream.scrollTop = stream.scrollHeight;
@@ -593,8 +658,139 @@ function timeAgo(iso) {
   return d.toLocaleDateString();
 }
 
+// ── File attachments ──
+let pendingFiles = [];  // [{filename, content_b64}]
+
+async function handleFiles(context) {
+  const input = document.getElementById(context + 'File');
+  if (!input.files.length) return;
+  for (const file of input.files) {
+    if (file.size > 10 * 1024 * 1024) {
+      alert(file.name + ' 超过 10MB 限制');
+      continue;
+    }
+    const buf = await file.arrayBuffer();
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    pendingFiles.push({ filename: file.name, content_b64: b64 });
+  }
+  input.value = '';
+  renderChips(context);
+}
+
+function renderChips(context) {
+  const el = document.getElementById(context + 'Chips');
+  if (!el) return;
+  el.innerHTML = pendingFiles.map((f, i) =>
+    `<div class="attach-chip">📎 ${esc(f.filename)} <span class="rm" onclick="removeFile(${i},'${context}')">✕</span></div>`
+  ).join('');
+}
+
+function removeFile(idx, context) {
+  pendingFiles.splice(idx, 1);
+  renderChips(context);
+}
+
+// ── Schedules ──
+async function loadSchedules() {
+  const list = await api('/api/schedules');
+  const el = document.getElementById('scheduleList');
+  if (!list.length) { el.innerHTML = '<div style="font-size:11px;color:var(--fg-muted);padding:4px 8px">暂无定时任务</div>'; return; }
+  el.innerHTML = list.map(s => `
+    <div class="schedule-item">
+      <div class="sq">${esc(s.original_question || s.question || '')}</div>
+      <div class="smeta">
+        <span>${s.interval_label || s.interval_hours + 'h'}</span>
+        <span>${s.last_run ? '上次: ' + timeAgo(s.last_run) : '未运行'}</span>
+        <span class="sdel" onclick="deleteSchedule('${s.schedule_id}')">删除</span>
+      </div>
+    </div>`).join('');
+}
+
+async function deleteSchedule(id) {
+  await api('/api/schedules/' + id, { method: 'DELETE' });
+  loadSchedules();
+}
+
+function showScheduleModal() {
+  const modal = document.createElement('div');
+  modal.className = 'schedule-modal';
+  modal.innerHTML = `
+    <div class="box">
+      <h3>⏰ 新建定时研究</h3>
+      <input type="text" id="schedQuestion" placeholder="研究主题">
+      <select id="schedInterval">
+        <option value="daily">每天</option>
+        <option value="weekly">每周</option>
+        <option value="12h">每12小时</option>
+        <option value="6h">每6小时</option>
+      </select>
+      <textarea id="schedFocus" placeholder="调优要求 (可选): 侧重哪些方面、报告风格..." rows="2"></textarea>
+      <div class="btns">
+        <button class="cancel" onclick="this.closest('.schedule-modal').remove()">取消</button>
+        <button class="confirm" onclick="createScheduleConfirm()">创建</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function createScheduleConfirm() {
+  const q = document.getElementById('schedQuestion').value.trim();
+  if (!q) return alert('请输入研究主题');
+  const interval = document.getElementById('schedInterval').value;
+  const focus = document.getElementById('schedFocus').value.trim();
+  const attachments = pendingFiles.map(f => ({ filename: f.filename, content_b64: f.content_b64 }));
+  await api('/api/schedules', { method: 'POST', body: JSON.stringify({ question: q, interval, focus, attachments }) });
+  document.querySelector('.schedule-modal').remove();
+  pendingFiles = [];
+  loadSchedules();
+}
+
+// ── Verify event handling ──
+// 在 handleEvent 里加 verify 分支 (在 report case 之前加)
+const _origHandleEvent = handleEvent;
+handleEvent = function(event) {
+  switch (event.type) {
+    case 'verify_start':
+      addActivity('verify', { label: '开始事实验证...' });
+      break;
+    case 'verify':
+      addActivity('verify', { label: '验证: ' + (event.claim || '') });
+      break;
+    case 'verify_done':
+      if (event.total !== undefined) {
+        // 汇总
+        updateLastVerify(event);
+      } else {
+        // 单条
+        updateLastVerify({ status: event.status, claim: event.claim });
+      }
+      break;
+    default:
+      _origHandleEvent(event);
+  }
+};
+
+function updateLastVerify(data) {
+  const items = document.querySelectorAll('.activity-item');
+  // 找最后一个 verify 类型的
+  for (let i = items.length - 1; i >= 0; i--) {
+    const icon = items[i].querySelector('.event-icon.verify');
+    if (icon) {
+      const content = items[i].querySelector('.event-content');
+      if (data.total !== undefined) {
+        content.innerHTML = `事实验证完成: ✅${data.verified||0} 已验证 / ⚠️${data.partial||0} 部分 / ❌${data.unverified||0} 未验证`;
+      } else {
+        const icon_map = { verified: '✅', partial: '⚠️', unverified: '❌' };
+        content.innerHTML = `${icon_map[data.status]||'❓'} ${esc(data.claim||'')} → ${data.status}`;
+      }
+      return;
+    }
+  }
+}
+
 // ── Init ──
 loadSessions();
+loadSchedules();
 </script>
 </body>
 </html>
