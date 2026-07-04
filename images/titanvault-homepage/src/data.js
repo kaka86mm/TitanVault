@@ -20,6 +20,7 @@ export const svgIcons = {
   litellm: { color: "#10B981", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L3 7v10l9 5 9-5V7z"/><path d="M12 2v20M3 7l9 5 9-5"/></svg>` },
   homepage: { color: "#64748B", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>` },
   api: { color: "#6366F1", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 18 23 12 17 6"/><polyline points="7 6 1 12 7 18"/><line x1="14" y1="4" x2="10" y2="20"/></svg>` },
+  research: { color: "#3b9eff", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>` },
 };
 
 export const services = [
@@ -38,6 +39,7 @@ export const services = [
   { name: 'Next AI Draw',icon: 'nextdraw',  desc: 'AI 画图',                    port: 4733,  url: '/go/draw',   status: 'up', cat: 'Agent' },
   { name: 'LiteLLM',     icon: 'litellm',   desc: 'LLM 网关',                   port: 4000,  url: '/go/litellm', status: 'up', cat: 'AI' },
   { name: 'API 指南',    icon: 'api',       desc: 'API 端点+调用示例+健康检查',  port: 0,     url: '/api-guide/', status: 'up', cat: 'AI' },
+  { name: 'Deep Research', icon: 'research', desc: 'QUEST-9B 深度研究+报告迭代',  port: 0,     url: '/research/', status: 'up', cat: 'AI' },
 ];
 
 // 分类元数据: cls 决定分类色系 (ai蓝/app紫/ops青/agent橙)

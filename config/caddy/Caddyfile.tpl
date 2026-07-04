@@ -42,6 +42,11 @@
 	redir /go/design      http://{host}:7456 permanent
 	redir /go/draw        http://{host}:4733 permanent
 
+	# Deep Research (QUEST-9B 深度研究 web 应用)
+	handle_path /research/* {
+		reverse_proxy deep-research:8099
+	}
+
 	# Hermes gateway API — ops agent (:8642, 运维 agent)
 	# TitanVault AI 助手专用: 管理 docker/systemctl/故障排查, approvals=off
 	# 通用对话用户自己开 dashboard (http://<host>:9119)

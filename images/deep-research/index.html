@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Research — TitanVault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+--bg: #0a0a0c; --bg-elevated: #101014; --surface: #16161c; --surface-hover: #1e1e26;
+--fg: #f0f0f4; --fg-2: #a0a0b0; --fg-muted: #68687a; --border: #262630; --border-subtle: #1a1a22;
+--accent: #3b9eff; --accent-glow: rgba(59,158,255,0.15); --accent-subtle: rgba(59,158,255,0.08);
+--success: #22d37c; --success-dim: rgba(34,211,124,0.12);
+--warn: #f5a623; --warn-dim: rgba(245,166,35,0.12);
+--danger: #f05a5a; --danger-dim: rgba(240,90,90,0.12);
+--purple: #a855f7; --purple-dim: rgba(168,85,247,0.1);
+--teal: #2dd4bf;
+--font-body: Inter, system-ui, sans-serif; --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+--text-xs: 11px; --text-sm: 13px; --text-base: 14px; --text-lg: 16px; --text-xl: 20px; --text-2xl: 26px;
+--space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px;
+--radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px; --radius-pill: 9999px;
+--ease-out: cubic-bezier(0.16,1,0.3,1);
+}
+[data-theme="light"] {
+--bg: #f2f4f8; --bg-elevated: #fff; --surface: #fff; --surface-hover: #f6f8fc;
+--fg: #0d111c; --fg-2: #3b4252; --fg-muted: #6e7687; --border: #d0d7e2; --border-subtle: #e6eaef;
+--accent: #2b82d9; --accent-glow: rgba(43,130,217,0.10); --accent-subtle: rgba(43,130,217,0.06);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
+  font-size: var(--text-base); line-height: 1.55; -webkit-font-smoothing: antialiased; height: 100vh; overflow: hidden; }
+
+/* ── Header ── */
+.header { height: 56px; display: flex; align-items: center; gap: var(--space-4);
+  padding: 0 var(--space-6); background: var(--bg-elevated); border-bottom: 1px solid var(--border);
+  position: relative; z-index: 10; }
+.header-logo { width: 28px; height: 28px; }
+.header-title { font-size: var(--text-lg); font-weight: 700; letter-spacing: -0.02em; }
+.header-sub { color: var(--fg-muted); font-size: var(--text-sm); margin-left: var(--space-2); }
+.header-spacer { flex: 1; }
+.header-btn { background: var(--surface); border: 1px solid var(--border); color: var(--fg-2);
+  width: 34px; height: 34px; border-radius: var(--radius-md); cursor: pointer;
+  font-size: 16px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.header-btn:hover { background: var(--surface-hover); color: var(--fg); }
+
+/* ── Layout ── */
+.layout { display: flex; height: calc(100vh - 56px); }
+.sidebar { width: 260px; background: var(--bg-elevated); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden; }
+.sidebar-header { padding: var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.new-btn { width: 100%; padding: var(--space-3) var(--space-4); background: var(--accent);
+  color: #fff; border: none; border-radius: var(--radius-md); font-size: var(--text-sm);
+  font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  gap: var(--space-2); transition: all 0.15s var(--ease-out); }
+.new-btn:hover { filter: brightness(1.1); box-shadow: 0 0 0 3px var(--accent-glow); }
+.session-list { flex: 1; overflow-y: auto; padding: var(--space-2); }
+.session-item { padding: var(--space-3); border-radius: var(--radius-md); cursor: pointer;
+  margin-bottom: var(--space-1); transition: background 0.12s; border: 1px solid transparent; }
+.session-item:hover { background: var(--surface-hover); }
+.session-item.active { background: var(--accent-subtle); border-color: var(--accent); }
+.session-item .q { font-size: var(--text-sm); font-weight: 500; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.session-item .meta { font-size: var(--text-xs); color: var(--fg-muted); margin-top: var(--space-1);
+  display: flex; gap: var(--space-3); }
+.session-item .meta .v { color: var(--accent); }
+
+/* ── Main ── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Welcome */
+.welcome { flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: var(--space-8); gap: var(--space-6); }
+.welcome h1 { font-size: var(--text-2xl); font-weight: 700; }
+.welcome p { color: var(--fg-2); max-width: 480px; text-align: center; }
+.welcome-box { width: 100%; max-width: 640px; }
+.welcome-box textarea { width: 100%; min-height: 80px; padding: var(--space-4);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  color: var(--fg); font-size: var(--text-base); font-family: var(--font-body); resize: none;
+  transition: box-shadow 0.15s; }
+.welcome-box textarea:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-glow);
+  border-color: var(--accent); }
+.welcome-box button { margin-top: var(--space-3); padding: var(--space-3) var(--space-6);
+  background: var(--accent); color: #fff; border: none; border-radius: var(--radius-md);
+  font-weight: 600; font-size: var(--text-base); cursor: pointer; transition: all 0.15s; }
+.welcome-box button:hover { filter: brightness(1.1); }
+.welcome-box button:disabled { opacity: 0.5; cursor: not-allowed; }
+.examples { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; }
+.example-chip { padding: var(--space-2) var(--space-4); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-pill); font-size: var(--text-sm);
+  color: var(--fg-2); cursor: pointer; transition: all 0.12s; }
+.example-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-subtle); }
+
+/* Session view */
+.session-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.session-header { padding: var(--space-4) var(--space-6); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: var(--space-3); }
+.session-header .question { font-size: var(--text-lg); font-weight: 600; flex: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-badge { padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill);
+  font-size: var(--text-xs); font-weight: 600; font-family: var(--font-mono); }
+.status-running { background: var(--warn-dim); color: var(--warn); }
+.status-done { background: var(--success-dim); color: var(--success); }
+.status-finalized { background: var(--purple-dim); color: var(--purple); }
+
+/* Activity stream (上区) */
+.activity { flex: 1; overflow-y: auto; padding: var(--space-4) var(--space-6); }
+.activity-item { margin-bottom: var(--space-3); animation: fadein 0.3s var(--ease-out); }
+@keyframes fadein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.activity-item .user-msg { background: var(--accent-subtle); border: 1px solid var(--accent);
+  border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); margin-left: 60px;
+  margin-bottom: var(--space-3); }
+.activity-item .user-msg .label { font-size: var(--text-xs); color: var(--accent);
+  font-weight: 600; margin-bottom: var(--space-1); }
+.event-row { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-2) 0; }
+.event-icon { width: 28px; height: 28px; border-radius: var(--radius-sm); display: flex;
+  align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.event-icon.search { background: var(--accent-subtle); }
+.event-icon.visit { background: var(--teal-dim, rgba(45,212,191,0.1)); color: var(--teal); }
+.event-icon.thinking { background: var(--purple-dim); color: var(--purple); }
+.event-icon.report { background: var(--success-dim); color: var(--success); }
+.event-icon.error { background: var(--danger-dim); color: var(--danger); }
+.event-content { flex: 1; font-size: var(--text-sm); color: var(--fg-2); padding-top: 4px; }
+.event-content .query { font-family: var(--font-mono); color: var(--accent); }
+.event-content .url { font-family: var(--font-mono); color: var(--teal); font-size: var(--text-xs);
+  word-break: break-all; }
+.event-content .detail { color: var(--fg-muted); font-size: var(--text-xs); margin-top: 2px; }
+.thinking-dots { display: inline-flex; gap: 4px; margin-left: var(--space-2); }
+.thinking-dots span { width: 5px; height: 5px; background: var(--purple); border-radius: 50%;
+  animation: bounce 1.2s infinite; }
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%,60%,100% { opacity: 0.3; } 30% { opacity: 1; } }
+
+/* Report + Input (下区) */
+.bottom-panel { border-top: 1px solid var(--border); background: var(--bg-elevated);
+  max-height: 50%; display: flex; flex-direction: column; }
+.version-tabs { display: flex; gap: var(--space-1); padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle); align-items: center; }
+.version-tab { padding: var(--space-2) var(--space-4); font-size: var(--text-sm); font-weight: 500;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; color: var(--fg-muted);
+  border-bottom: 2px solid transparent; transition: all 0.12s; }
+.version-tab:hover { color: var(--fg-2); }
+.version-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.version-tab .new { font-size: var(--text-xs); background: var(--success); color: #0a0a0c;
+  padding: 1px 5px; border-radius: var(--radius-pill); margin-left: 4px; font-weight: 700; }
+.tab-actions { margin-left: auto; display: flex; gap: var(--space-2); }
+.tab-btn { padding: var(--space-1) var(--space-3); font-size: var(--text-xs); border-radius: var(--radius-sm);
+  background: var(--surface); border: 1px solid var(--border); color: var(--fg-2); cursor: pointer; }
+.tab-btn:hover { background: var(--surface-hover); }
+.report-area { flex: 1; overflow-y: auto; padding: var(--space-4) var(--space-6); }
+.report-area .md h1 { font-size: var(--text-xl); margin: var(--space-4) 0 var(--space-2); font-weight: 700; }
+.report-area .md h2 { font-size: var(--text-lg); margin: var(--space-4) 0 var(--space-2); font-weight: 600; color: var(--fg); }
+.report-area .md h3 { font-size: var(--text-base); margin: var(--space-3) 0 var(--space-1); font-weight: 600; color: var(--fg-2); }
+.report-area .md p { margin-bottom: var(--space-2); color: var(--fg-2); }
+.report-area .md ul, .report-area .md ol { margin: var(--space-2) 0 var(--space-2) var(--space-5); color: var(--fg-2); }
+.report-area .md li { margin-bottom: var(--space-1); }
+.report-area .md code { font-family: var(--font-mono); background: var(--surface-hover);
+  padding: 1px 5px; border-radius: var(--radius-sm); font-size: var(--text-sm); }
+.report-area .md pre { background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: var(--space-3); overflow-x: auto; margin: var(--space-3) 0; }
+.report-area .md pre code { background: none; padding: 0; }
+.report-area .md blockquote { border-left: 3px solid var(--accent); padding-left: var(--space-3);
+  margin: var(--space-3) 0; color: var(--fg-muted); }
+.report-area .md a { color: var(--accent); text-decoration: none; }
+.report-area .md hr { border: none; border-top: 1px solid var(--border-subtle); margin: var(--space-4) 0; }
+.report-area .empty { color: var(--fg-muted); text-align: center; padding: var(--space-8); }
+
+/* Iteration input */
+.iter-input { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle);
+  display: flex; gap: var(--space-3); }
+.iter-input textarea { flex: 1; padding: var(--space-3); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg);
+  font-size: var(--text-sm); font-family: var(--font-body); resize: none; min-height: 44px;
+  max-height: 120px; transition: box-shadow 0.15s; }
+.iter-input textarea:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-glow); border-color: var(--accent); }
+.iter-input button { padding: 0 var(--space-5); background: var(--accent); color: #fff; border: none;
+  border-radius: var(--radius-md); font-weight: 600; cursor: pointer; align-self: stretch;
+  transition: all 0.15s; }
+.iter-input button:hover { filter: brightness(1.1); }
+.iter-input button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <svg class="header-logo" viewBox="0 0 24 24" fill="none" stroke="#3b9eff" stroke-width="2">
+    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+  </svg>
+  <div class="header-title">Deep Research</div>
+  <div class="header-sub">QUEST-9B</div>
+  <div class="header-spacer"></div>
+  <button class="header-btn" onclick="toggleTheme()" id="themeBtn">🌙</button>
+</div>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <button class="new-btn" onclick="newResearch()">
+        <span>+</span> 新建研究
+      </button>
+    </div>
+    <div class="session-list" id="sessionList"></div>
+  </div>
+
+  <!-- Main -->
+  <div class="main" id="mainArea">
+    <!-- Welcome (默认) -->
+    <div class="welcome" id="welcomeView">
+      <h1>🔬 Deep Research</h1>
+      <p>输入一个研究问题，QUEST-9B 会自主搜索网页、阅读详情、多轮迭代，生成带引用的研究报告。100% 本地运行。</p>
+      <div class="welcome-box">
+        <textarea id="welcomeInput" placeholder="输入研究问题，如：RDNA 4 相比 3.5 有哪些改进？" 
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitWelcome()}"></textarea>
+        <button onclick="submitWelcome()" id="welcomeSubmit">开始研究</button>
+      </div>
+      <div class="examples">
+        <div class="example-chip" onclick="useExample('Vulkan 和 ROCm 在 LLM 推理上的性能差异')">Vulkan vs ROCm</div>
+        <div class="example-chip" onclick="useExample('AMD RDNA 4 架构的改进和新技术')">RDNA 4 改进</div>
+        <div class="example-chip" onclick="useExample('Python 3.13 的无 GIL 模式工作原理')">Python 3.13 free-threading</div>
+        <div class="example-chip" onclick="useExample('本地 LLM 部署的最佳实践 2026')">本地 LLM 部署</div>
+      </div>
+    </div>
+
+    <!-- Session View (研究中/已完成) -->
+    <div class="session-view hidden" id="sessionView">
+      <div class="session-header">
+        <div class="question" id="sessionQuestion"></div>
+        <div class="status-badge" id="sessionStatus"></div>
+      </div>
+      <div class="activity" id="activityStream"></div>
+      <div class="bottom-panel">
+        <div class="version-tabs" id="versionTabs"></div>
+        <div class="report-area" id="reportArea">
+          <div class="empty">研究进行中，报告将在完成后显示...</div>
+        </div>
+        <div class="iter-input">
+          <textarea id="iterInput" placeholder="迭代指令：补充... / 展开... / 换个角度..." 
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitIteration()}"></textarea>
+          <button onclick="submitIteration()" id="iterBtn">迭代</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let currentSession = null;
+let currentVersion = 0;
+let eventSource = null;
+
+// ── Theme ──
+function getTheme() { return localStorage.getItem('ai-station-theme') || 'dark'; }
+function applyTheme() {
+  document.documentElement.dataset.theme = getTheme();
+  document.getElementById('themeBtn').textContent = getTheme() === 'dark' ? '🌙' : '☀️';
+}
+function toggleTheme() {
+  const next = getTheme() === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('ai-station-theme', next);
+  applyTheme();
+}
+applyTheme();
+
+// ── API ──
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: {'Content-Type':'application/json'}, ...opts });
+  return r.json();
+}
+
+// ── Sessions ──
+async function loadSessions() {
+  const list = await api('/api/sessions');
+  const el = document.getElementById('sessionList');
+  if (!list.length) { el.innerHTML = '<div style="padding:16px;color:var(--fg-muted);font-size:13px;text-align:center">暂无研究</div>'; return; }
+  el.innerHTML = list.map(s => `
+    <div class="session-item ${s.session_id === currentSession ? 'active' : ''}" onclick="openSession('${s.session_id}')">
+      <div class="q">${esc(s.question)}</div>
+      <div class="meta">
+        <span>${s.current_version > 0 ? 'v' + s.current_version : '...'}</span>
+        <span>${s.status === 'finalized' ? '✓ 已完成' : s.n_messages + ' 轮'}</span>
+        <span>${timeAgo(s.created_at)}</span>
+      </div>
+    </div>`).join('');
+}
+
+function newResearch() {
+  currentSession = null;
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  document.getElementById('welcomeView').classList.remove('hidden');
+  document.getElementById('sessionView').classList.add('hidden');
+  loadSessions();
+  document.getElementById('welcomeInput').focus();
+}
+
+async function submitWelcome() {
+  const q = document.getElementById('welcomeInput').value.trim();
+  if (!q) return;
+  document.getElementById('welcomeSubmit').disabled = true;
+  const r = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ question: q }) });
+  if (r.session_id) {
+    document.getElementById('welcomeInput').value = '';
+    document.getElementById('welcomeSubmit').disabled = false;
+    openSession(r.session_id, r.question);
+  }
+}
+
+function useExample(q) {
+  document.getElementById('welcomeInput').value = q;
+  submitWelcome();
+}
+
+// ── Session View ──
+async function openSession(sid, presetQuestion) {
+  currentSession = sid;
+  document.getElementById('welcomeView').classList.add('hidden');
+  document.getElementById('sessionView').classList.remove('hidden');
+  document.getElementById('activityStream').innerHTML = '';
+
+  const data = await api(`/api/sessions/${sid}`);
+  document.getElementById('sessionQuestion').textContent = presetQuestion || data.messages?.[0]?.content || 'Research';
+  
+  // Status badge
+  const runStatus = data.run_status?.status || 'idle';
+  const badge = document.getElementById('sessionStatus');
+  if (runStatus === 'running') { badge.className = 'status-badge status-running'; badge.textContent = '研究中...'; }
+  else if (data.status === 'finalized') { badge.className = 'status-badge status-finalized'; badge.textContent = '✓ 已完成'; }
+  else { badge.className = 'status-badge status-done'; badge.textContent = '已完成'; }
+
+  // Render history messages
+  if (data.messages) {
+    data.messages.forEach((m, i) => {
+      if (i === 0 || m.is_followup) {
+        addActivity('user', { label: m.is_followup ? '迭代指令' : '研究问题', content: m.content });
+      }
+    });
+  }
+
+  // Render versions
+  renderVersions(data.versions || []);
+
+  loadSessions();
+
+  // Connect SSE if running
+  if (runStatus === 'running') {
+    connectSSE(sid);
+  }
+}
+
+function connectSSE(sid) {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource(`/api/sessions/${sid}/stream`);
+  eventSource.onmessage = (e) => {
+    const event = JSON.parse(e.data);
+    handleEvent(event);
+  };
+  eventSource.onerror = () => { eventSource.close(); };
+}
+
+function handleEvent(event) {
+  switch (event.type) {
+    case 'start':
+      addActivity('thinking', { turn: 1, max_turns: event.max_turns });
+      document.getElementById('sessionStatus').className = 'status-badge status-running';
+      document.getElementById('sessionStatus').textContent = '研究中...';
+      break;
+    case 'search':
+      addActivity('search', { query: event.query });
+      break;
+    case 'search_done':
+      updateLastSearch(event.count);
+      break;
+    case 'visit':
+      addActivity('visit', { url: event.url, goal: event.goal });
+      break;
+    case 'visit_done':
+      updateLastVisit(event.url, event.length, event.error);
+      break;
+    case 'thinking':
+      updateThinking(event.turn, event.max_turns, event.forced);
+      break;
+    case 'report':
+      // Reload session to get new version
+      openSession(currentSession);
+      break;
+    case 'done':
+      document.getElementById('sessionStatus').className = 'status-badge status-done';
+      document.getElementById('sessionStatus').textContent = '已完成';
+      break;
+    case 'error':
+      addActivity('error', { message: event.message });
+      break;
+    case 'end':
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      loadSessions();
+      break;
+  }
+}
+
+// ── Activity rendering ──
+function addActivity(type, data) {
+  const stream = document.getElementById('activityStream');
+  const item = document.createElement('div');
+  item.className = 'activity-item';
+
+  if (type === 'user') {
+    item.innerHTML = `<div class="user-msg"><div class="label">${data.label}</div>${esc(data.content)}</div>`;
+  } else if (type === 'search') {
+    item.innerHTML = `<div class="event-row">
+      <div class="event-icon search">🔍</div>
+      <div class="event-content">搜索: <span class="query">${esc(data.query)}</span>
+        <div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`;
+    item.dataset.query = data.query;
+  } else if (type === 'visit') {
+    item.innerHTML = `<div class="event-row">
+      <div class="event-icon visit">📄</div>
+      <div class="event-content">阅读: <span class="url">${esc(data.url)}</span>
+        ${data.goal ? '<div class="detail">目标: ' + esc(data.goal) + '</div>' : ''}
+        <div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`;
+    item.dataset.url = data.url;
+  } else if (type === 'thinking') {
+    item.innerHTML = `<div class="event-row">
+      <div class="event-icon thinking">💭</div>
+      <div class="event-content">Turn ${data.turn}/${data.max_turns} — QUEST-9B 推理中
+        ${data.forced ? '(强制总结)' : ''}
+        <div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`;
+    item.dataset.thinking = 'true';
+  } else if (type === 'error') {
+    item.innerHTML = `<div class="event-row">
+      <div class="event-icon error">⚠</div>
+      <div class="event-content">${esc(data.message)}</div></div>`;
+  }
+  stream.appendChild(item);
+  stream.scrollTop = stream.scrollHeight;
+}
+
+function updateLastSearch(count) {
+  const items = document.querySelectorAll('[data-query]');
+  const last = items[items.length - 1];
+  if (last) {
+    const dots = last.querySelector('.thinking-dots');
+    if (dots) dots.remove();
+    const content = last.querySelector('.event-content');
+    content.innerHTML += `<div class="detail">→ ${count} 条结果</div>`;
+  }
+}
+
+function updateLastVisit(url, length, error) {
+  const items = document.querySelectorAll('[data-url]');
+  const last = Array.from(items).find(el => el.dataset.url === url);
+  if (last) {
+    const dots = last.querySelector('.thinking-dots');
+    if (dots) dots.remove();
+    const content = last.querySelector('.event-content');
+    if (error) {
+      content.innerHTML += `<div class="detail" style="color:var(--danger)">→ 失败: ${error}</div>`;
+    } else {
+      content.innerHTML += `<div class="detail">→ ${length} 字符</div>`;
+    }
+  }
+}
+
+function updateThinking(turn, max, forced) {
+  const items = document.querySelectorAll('[data-thinking]');
+  const last = items[items.length - 1];
+  if (last) { last.querySelector('.event-content').innerHTML = 
+    `Turn ${turn}/${max} — QUEST-9B 推理中${forced ? ' (强制总结)' : ''}<div class="thinking-dots"><span></span><span></span><span></span></div>`; }
+}
+
+// ── Versions ──
+function renderVersions(versions) {
+  const tabs = document.getElementById('versionTabs');
+  const area = document.getElementById('reportArea');
+  if (!versions.length) {
+    tabs.innerHTML = '';
+    area.innerHTML = '<div class="empty">研究进行中，报告将在完成后显示...</div>';
+    return;
+  }
+  currentVersion = versions[versions.length - 1].version;
+  tabs.innerHTML = versions.map(v => `
+    <div class="version-tab ${v.version === currentVersion ? 'active' : ''}" onclick="showVersion(${v.version})">
+      v${v.version}${v.version === versions[versions.length-1].version ? '<span class="new">最新</span>' : ''}
+    </div>`).join('') + `
+    <div class="tab-actions">
+      <button class="tab-btn" onclick="copyReport()">📋 复制</button>
+      <button class="tab-btn" onclick="ingestReport()">📚 存入知识库</button>
+      <button class="tab-btn" onclick="finalizeSession()">✓ 完成</button>
+    </div>`;
+  showVersion(currentVersion);
+}
+
+async function showVersion(v) {
+  currentVersion = v;
+  document.querySelectorAll('.version-tab').forEach(t => t.classList.remove('active'));
+  const data = await api(`/api/sessions/${currentSession}`);
+  const ver = (data.versions || []).find(x => x.version === v);
+  const area = document.getElementById('reportArea');
+  if (ver) {
+    area.innerHTML = `<div class="md">${renderMarkdown(ver.content)}</div>`;
+    // highlight active tab
+    const tabs = document.querySelectorAll('.version-tab');
+    tabs.forEach(t => { if (t.textContent.startsWith('v' + v)) t.classList.add('active'); });
+  }
+}
+
+// ── Iteration ──
+async function submitIteration() {
+  const content = document.getElementById('iterInput').value.trim();
+  if (!content || !currentSession) return;
+  document.getElementById('iterBtn').disabled = true;
+  document.getElementById('iterInput').value = '';
+  addActivity('user', { label: '迭代指令', content });
+  const r = await api(`/api/sessions/${currentSession}/message`, {
+    method: 'POST', body: JSON.stringify({ content })
+  });
+  if (r.status === 'running') {
+    connectSSE(currentSession);
+  }
+  document.getElementById('iterBtn').disabled = false;
+}
+
+async function finalizeSession() {
+  if (!currentSession) return;
+  await api(`/api/sessions/${currentSession}/finalize`, { method: 'POST' });
+  openSession(currentSession);
+}
+
+async function ingestReport() {
+  if (!currentSession) return;
+  const r = await api('/api/ingest', { method: 'POST', body: JSON.stringify({ session_id: currentSession, version: currentVersion }) });
+  if (r.status === 'ok') alert('✅ 已存入 Open Notebook: ' + r.source_id);
+  else alert('❌ 存入失败: ' + (r.message || r.body || '未知错误'));
+}
+
+function copyReport() {
+  const text = document.querySelector('.report-area .md')?.innerText || '';
+  navigator.clipboard.writeText(text);
+  alert('已复制');
+}
+
+// ── Markdown renderer (轻量, 防 XSS) ──
+function renderMarkdown(md) {
+  let html = esc(md);
+  // code blocks
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (m, lang, code) => `<pre><code>${code}</code></pre>`);
+  // headings
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // bold / italic / code
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+  // links [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  // [source: url] citations
+  html = html.replace(/\[source: (.+?)\]/g, '<a href="$1" target="_blank" style="font-size:11px;color:var(--accent)">📎 $1</a>');
+  // hr
+  html = html.replace(/^---$/gm, '<hr>');
+  // blockquote
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+  // lists
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
+  html = html.replace(/<\/ul>\s*<ul>/g, '');
+  // paragraphs
+  html = html.split(/\n\n+/).map(p => {
+    if (p.match(/^<(h\d|ul|ol|pre|blockquote|hr)/)) return p;
+    return p.trim() ? `<p>${p.replace(/\n/g,'<br>')}</p>` : '';
+  }).join('');
+  return html;
+}
+
+// ── Utils ──
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function timeAgo(iso) {
+  const d = new Date(iso), now = new Date(), diff = (now - d) / 1000;
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return Math.floor(diff/60) + '分钟前';
+  if (diff < 86400) return Math.floor(diff/3600) + '小时前';
+  return d.toLocaleDateString();
+}
+
+// ── Init ──
+loadSessions();
+</script>
+</body>
+</html>

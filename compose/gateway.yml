@@ -108,6 +108,29 @@ services:
     networks: [mozin]
     logging: *id001
 
+  # Deep Research Web 应用: QUEST-9B 驱动的深度研究, 支持报告迭代。
+  # 对话式 UI, SSE 实时进度, 版本管理, 串联 Open Notebook。
+  deep-research:
+    build: ../images/deep-research
+    image: mozin/deep-research:latest
+    profiles: [gateway]
+    restart: unless-stopped
+    environment:
+      QUEST_ENDPOINT: "http://host-gateway:8093/v1"
+      SEARXNG_URL: "http://host-gateway:8087"
+      LITELLM_URL: "http://host-gateway:4000/v1"
+      LITELLM_KEY: "${LITELLM_MASTER_KEY}"
+      ON_BASE_URL: "http://host-gateway:5055"
+      REPORTS_DIR: "/data/quest-reports"
+      MAX_TURNS: "5"
+    volumes:
+      # 报告 + session 持久化
+      - ${DATA_DIR:-/data}/quest-reports:/data/quest-reports
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    networks: [mozin]
+    logging: *id001
+
 networks:
   mozin:
     driver: bridge
