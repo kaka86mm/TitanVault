@@ -1,5 +1,5 @@
 ---
-name: mozin-meeting
+name: titanvault-meeting
 description: |
   会议录音转会议纪要。把任意音频/视频文件变成结构化 markdown 纪要——上传到 Aham Voice
   完成转写+说话人分离+纪要生成，或用 SenseVoice 快速出文字稿。
@@ -7,7 +7,7 @@ description: |
   「生成会议纪要」「快速转写」「这个会开了什么」时使用。
   English: "process this meeting", "transcribe recording", "meeting minutes", "what was said in this meeting".
 version: 1.0.0
-author: Mozin
+author: TitanVault
 license: Apache-2.0
 platforms: [linux]
 metadata:
@@ -31,7 +31,7 @@ metadata:
 **不要自己拼 curl 调 Aham API。** 脚本 `ops/meeting/meeting.sh` 封装了 cookie 认证、轮询、导出等所有边界情况。直接调用：
 
 ```
-terminal(command="bash $MOZIN_REPO/ops/meeting/meeting.sh <子命令> [参数]", workdir="$MOZIN_REPO")
+terminal(command="bash $TITANVAULT_REPO/ops/meeting/meeting.sh <子命令> [参数]", workdir="$TITANVAULT_REPO")
 ```
 
 ## 工作流
@@ -90,7 +90,7 @@ bash ops/meeting/meeting.sh status <recording_id>
 
 | 触发条件 | 一线修复 | 仍失败兜底 |
 |---|---|---|
-| Aham :8765 不通 (login/transcribe 报连接错误) | `docker compose --profile ai-capability ps aham-voice-web` 看是否 Up; 没起则 `docker compose --profile ai-capability up -d aham-voice-web` | 检查 ROCm: `rocm-smi`; GPU 不识别→这是硬件问题, 升级到 mozin-ops skill 处理 |
+| Aham :8765 不通 (login/transcribe 报连接错误) | `docker compose --profile ai-capability ps aham-voice-web` 看是否 Up; 没起则 `docker compose --profile ai-capability up -d aham-voice-web` | 检查 ROCm: `rocm-smi`; GPU 不识别→这是硬件问题, 升级到 titanvault-ops skill 处理 |
 | 文件过大 (>2GB) | 用 ffmpeg 切分: `ffmpeg -i big.m4a -t 3600 -c copy part1.m4a` (按小时切) | 提醒用户分段录音 |
 | `transcribe` 返回 401 | Aham 启用了密码但 cookie 过期 → `meeting.sh login` 重新登录 | 确认 .env 里 AHAMVOICE_ACCESS_PASSWORD 正确 |
 | `wait` 超时 (ASR 长时间 running) | 首次运行要下 ~4GB ASR 模型, 可能很慢; `docker logs aham-voice-web --tail 20` 看进度 | 模型下载失败→检查网络/磁盘, 升级处理 |
@@ -133,7 +133,7 @@ bash ops/meeting/meeting.sh status <recording_id>
 - 轮询: `GET /api/recordings/<id>` 读 `tasks.{asr,summary,emotion}_status`。
 - 导出: `GET /api/recordings/<id>/export/{summary,transcript}.md`。
 
-## 环境变量（从 $MOZIN_REPO/.env 读）
+## 环境变量（从 $TITANVAULT_REPO/.env 读）
 
 ```
 AHAMVOICE_URL=http://localhost:8765

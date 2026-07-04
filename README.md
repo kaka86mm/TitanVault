@@ -83,10 +83,10 @@ Hermes ships with **scenario-driven skills** — not raw API wrappers, but end-t
 
 | Skill | What it does | Triggers |
 |---|---|---|
-| **mozin-ops** | Operate & troubleshoot the workstation (health, heal, backup, report) | "check status", "heal", "disk full" |
-| **mozin-meeting** | Turn a meeting recording into structured markdown minutes | "process this meeting", "transcribe recording", "meeting minutes" |
-| **mozin-ingest** | Ingest any URL / PDF / text into the knowledge base, then ask questions | "save this link to notebook", "ingest this PDF", "what does this say" |
-| **titanvault-ops** | Hardware & architecture knowledge base (passive) | hardware questions, GPU/port/config lookups |
+| **titanvault-ops** | Operate & troubleshoot the workstation (health, heal, backup, report) | "check status", "heal", "disk full" |
+| **titanvault-meeting** | Turn a meeting recording into structured markdown minutes | "process this meeting", "transcribe recording", "meeting minutes" |
+| **titanvault-ingest** | Ingest any URL / PDF / text into the knowledge base, then ask questions | "save this link to notebook", "ingest this PDF", "what does this say" |
+| **titanvault-knowledge** | Hardware & architecture knowledge base (passive) | hardware questions, GPU/port/config lookups |
 
 **Meeting skill** offers two paths: *full mode* (Aham Voice: transcription + speaker diarization + AI minutes + emotion) or *quick mode* (SenseVoice: fast plain-text transcript). The ingest skill auto-detects PDFs and routes them through MinerU for table/formula-preserving parsing before embedding.
 
@@ -243,7 +243,7 @@ TitanVault/
 ├── native/                   # systemd services (llama.cpp, Hermes, OpenSquilla, Chrome)
 ├── config/                   # Templates (.env, Caddy, LiteLLM, Hermes)
 │   └── hermes/skills/        # Hermes skills (ops knowledge + nuwa/darwin meta-skills)
-├── ops/                      # Scenario skills (meeting, ingest, mozin-ops)
+├── ops/                      # Scenario skills (meeting, ingest, titanvault-ops)
 ├── presets/                  # minimal / standard / full
 ├── hardware/                 # Strix Halo-specific parameters
 ├── models/                   # Model manifest + download config

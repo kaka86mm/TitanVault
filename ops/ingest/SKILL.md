@@ -1,5 +1,5 @@
 ---
-name: mozin-ingest
+name: titanvault-ingest
 description: |
   把任意 URL / 文件 / 文本存入知识库 (Open Notebook), 并支持就内容提问。
   PDF 自动走 MinerU 解析, 网页直接抓取, 全部本地处理。
@@ -7,7 +7,7 @@ description: |
   「这篇 PDF 存进去」「这个链接讲什么, 存下来之后问」时使用。
   English: "ingest this", "add to knowledge base", "save this URL to notebook", "store this PDF".
 version: 1.0.0
-author: Mozin
+author: TitanVault
 license: Apache-2.0
 platforms: [linux]
 metadata:
@@ -31,7 +31,7 @@ metadata:
 Open Notebook 的 API 路径前缀不同版本不一致 (`/api/sources` vs `/sources`)、字段名有差异、PDF 要不要走 MinerU 有判断逻辑。**这些都封装在 `ops/ingest/ingest.sh` 里。** 直接调用：
 
 ```
-terminal(command="bash $MOZIN_REPO/ops/ingest/ingest.sh <子命令> [参数]", workdir="$MOZIN_REPO")
+terminal(command="bash $TITANVAULT_REPO/ops/ingest/ingest.sh <子命令> [参数]", workdir="$TITANVAULT_REPO")
 ```
 
 ## 工作流
@@ -126,7 +126,7 @@ bash ops/ingest/ingest.sh probe
 | url 存入后 ask 返回空 | ON 还在抓取+embedding (1-3 min); `sources` 看 status; 等 60s 重试 | source 状态=failed → 重试 `POST /sources/<id>/retry` |
 | PDF MinerU 解析超时/失败 | `curl $MINERU_URL/health`; MinerU 没起则 `docker compose --profile ai-capability up -d mineru-api` | 降级: 直接 `file` 子命令 (不走 MinerU), 告知用户表格/公式可能丢 |
 | PDF 太大 (>100MB) MinerU OOM | 先拆分: `pdftk big.pdf cat 1-50 output part1.pdf` (按页) | 提醒用户用小一点的 PDF, 或只存关键章节 |
-| ask 答案明显跑题 | ON 的 embedding 模型没配好; 检查 `setup-open-notebook.sh` 是否跑过; `GET /api/models` 看 embedding 是否就绪 | 升级到 mozin-ops 处理模型配置 |
+| ask 答案明显跑题 | ON 的 embedding 模型没配好; 检查 `setup-open-notebook.sh` 是否跑过; `GET /api/models` 看 embedding 是否就绪 | 升级到 titanvault-ops 处理模型配置 |
 | **ask 中文问题报 OUTPUT_PARSING_FAILURE** | ON 的 LLM 用中文问时 JSON 输出格式错误 (英文正常)。已知限制, 非脚本 bug | 换英文提问, 或在完整模式 (`/api/chat/execute`) 下用中文 |
 | ask 返回 "Ask operation failed" | 模型 ID 没传对; ingest.sh 会自动从 /api/models/defaults 获取, 检查该端点是否返回有效 model_id | 手动指定: 看 `/api/models` 拿一个 language 类型的 model id |
 | text 子命令字段名不对 (string vs content) | ingest.sh 已自动重试两个字段名 | ON 版本太旧/太新, 看 `/openapi.json` 确认字段 |
@@ -168,7 +168,7 @@ bash ops/ingest/ingest.sh probe
 - **/ask 是 SSE 流式**: `curl -N`, 取 `type=final_answer` 的 content 拼接。
 - **ON 不能路径反代** (Caddyfile 注明): 必须用原始端口 :5055, 不能走 `/open-notebook/` 子路径。
 
-## 环境变量（从 $MOZIN_REPO/.env 读）
+## 环境变量（从 $TITANVAULT_REPO/.env 读）
 
 ```
 OPEN_NOTEBOOK_URL=http://localhost:5055

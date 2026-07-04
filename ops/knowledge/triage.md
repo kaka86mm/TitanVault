@@ -1,4 +1,4 @@
-# Mozin-workstation 故障分诊表 (Triage)
+# TitanVault 故障分诊表 (Triage)
 
 > Hermes 排障时的"症状 → 可能原因 → 修复"快速查询表。
 > 修复标记: 🔧=低风险可执行(ops.sh heal) | ⚠️=需理由重启 | 🚫=升级人工(改配置/更新)

@@ -1,18 +1,18 @@
 ---
-name: mozin-ops
-description: "Operate and troubleshoot the Mozin-workstation deployment (health, repair, update). Low-risk actions only."
+name: titanvault-ops
+description: "Operate and troubleshoot the TitanVault deployment (health, repair, update). Low-risk actions only."
 version: 1.0.0
-author: Mozin
+author: TitanVault
 license: Apache-2.0
 platforms: [linux]
 metadata:
   hermes:
-    tags: [Ops, DevOps, Docker, Troubleshooting, Monitoring, Mozin]
+    tags: [Ops, DevOps, Docker, Troubleshooting, Monitoring, TitanVault]
 ---
 
-# Mozin-workstation Operations — Hermes Skill
+# TitanVault Operations — Hermes Skill
 
-Operate and troubleshoot the Mozin-workstation (AMD Ryzen AI Max+ 395 AI workstation).
+Operate and troubleshoot the TitanVault (AMD Ryzen AI Max+ 395 AI workstation).
 **Permission model: low-risk execution only.** Read anything; run safe healing; escalate
 destructive changes (image updates, config edits) to the human.
 
@@ -22,7 +22,7 @@ destructive changes (image updates, config edits) to the human.
 - **Docker compose**: 7 layered files under `compose/`, gated by profiles (infra/gateway/...).
 - **Shared infra**: one `postgres` (pgvector) + `redis` + `qdrant`, reused by dify/gitea/litellm/etc.
 - **LLM core**: all LLM traffic flows through `litellm` → native llama.cpp.
-- Repo root: `$MOZIN_REPO` (the workstation checkout, e.g. `/home/<user>/Mozin-workstation`).
+- Repo root: `$TITANVAULT_REPO` (the workstation checkout, e.g. `/home/<user>/TitanVault`).
 
 ## The Golden Rule: Prefer the deterministic scripts
 
@@ -30,10 +30,10 @@ destructive changes (image updates, config edits) to the human.
 They handle edge cases you'd miss (postgres logical backup consistency, profile mapping, etc.).
 
 ```
-terminal(command="bash $MOZIN_REPO/scripts/ops.sh status",   workdir="$MOZIN_REPO")   # health
-terminal(command="bash $MOZIN_REPO/scripts/ops.sh heal",      workdir="$MOZIN_REPO")   # low-risk self-heal
-terminal(command="bash $MOZIN_REPO/scripts/ops.sh report",    workdir="$MOZIN_REPO")   # ops summary
-terminal(command="bash $MOZIN_REPO/scripts/health-check.sh --json", workdir="$MOZIN_REPO")  # machine-readable
+terminal(command="bash $TITANVAULT_REPO/scripts/ops.sh status",   workdir="$TITANVAULT_REPO")   # health
+terminal(command="bash $TITANVAULT_REPO/scripts/ops.sh heal",      workdir="$TITANVAULT_REPO")   # low-risk self-heal
+terminal(command="bash $TITANVAULT_REPO/scripts/ops.sh report",    workdir="$TITANVAULT_REPO")   # ops summary
+terminal(command="bash $TITANVAULT_REPO/scripts/health-check.sh --json", workdir="$TITANVAULT_REPO")  # machine-readable
 ```
 
 ## Permission Matrix — what you may and may not do
@@ -57,7 +57,7 @@ When asked to investigate an issue (or `health-check` shows critical):
 
 1. **Get structured status first** — always start here:
    ```
-   terminal(command="bash $MOZIN_REPO/scripts/health-check.sh", workdir="$MOZIN_REPO")
+   terminal(command="bash $TITANVAULT_REPO/scripts/health-check.sh", workdir="$TITANVAULT_REPO")
    ```
 2. **For the failing component, read recent logs**:
    - Docker service: `docker compose logs --tail=80 <svc>`

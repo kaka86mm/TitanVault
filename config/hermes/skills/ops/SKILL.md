@@ -1,5 +1,5 @@
 ---
-name: titanvault-ops
+name: titanvault-knowledge
 description: TitanVault AMD AI MAX 395 工作站运维知识。服务架构、Docker 管理、LLM 推理、硬件监控、故障排查。
 version: 1.0.0
 author: TitanVault
