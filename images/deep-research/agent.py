@@ -254,6 +254,14 @@ class ResearchAgent:
         emit({"type": "start", "question": question,
               "iteration": is_iteration, "max_turns": self.max_turns})
 
+        # ── 预热搜索: 自动用 exa + searxng 各搜一次, 注入初始上下文 ──
+        # QUEST-9B 倾向只调 search, 这里强制先跑 exa (高质量语义搜索)
+        # 让模型后续专注于 visit + 追加 twitter/小红书 (社媒讨论)
+        primer = self._primer_search(question, context, emit)
+        if primer:
+            messages.append({"role": "user",
+                             "content": f"<tool_response>\n{primer}\n</tool_response>"})
+
         for turn in range(self.max_turns):
             emit({"type": "thinking", "turn": turn + 1, "max_turns": self.max_turns})
 
@@ -484,6 +492,71 @@ class ResearchAgent:
             return name, args
         except (json.JSONDecodeError, AttributeError, TypeError):
             return None
+
+    def _primer_search(self, question: str, context: ResearchContext,
+                       emit) -> str:
+        """预热搜索: 自动用 exa + searxng 各搜一次, 注入初始上下文。
+
+        QUEST-9B 倾向只调 search 且不稳定, 这里强制先跑两个引擎,
+        让模型后续专注于 visit + twitter/小红书 (社媒讨论)。
+        """
+        results = []
+        # Exa 语义搜索 (高质量)
+        emit({"type": "search", "query": question, "engine": "exa", "auto": True})
+        r = tool_exa(question, num=5)
+        context.add_search(question)
+        if r.get("results"):
+            results.append(self._format_search_results(r))
+            emit({"type": "search_done", "query": question,
+                  "count": len(r["results"]), "engine": "exa", "auto": True})
+        else:
+            emit({"type": "search_done", "query": question, "count": 0,
+                  "engine": "exa", "auto": True})
+        # SearXNG 通用搜索
+        emit({"type": "search", "query": question, "engine": "searxng", "auto": True})
+        r2 = tool_search(question)
+        context.add_search(question)
+        if r2.get("results"):
+            results.append(self._format_search_results(r2))
+            emit({"type": "search_done", "query": question,
+                  "count": len(r2["results"]), "engine": "searxng", "auto": True})
+        else:
+            emit({"type": "search_done", "query": question, "count": 0,
+                  "engine": "searxng", "auto": True})
+
+        # 社媒讨论: 问题含社区/评价/体验等关键词时, 自动追加 twitter + 小红书
+        social_kws = ["讨论", "评价", "体验", "怎么看", "大家", "觉得", "观点",
+                      "opinion", "review", "discuss", "community", "think",
+                      "社区", "用户", "真实", "口碑", "测评", "推荐"]
+        is_social = any(kw in question.lower() for kw in social_kws)
+        if is_social:
+            # Twitter (英文社媒讨论)
+            tw_q = question[:80]
+            emit({"type": "search", "query": tw_q, "engine": "twitter", "auto": True})
+            r3 = tool_twitter(tw_q, num=10)
+            context.add_search(f"twitter:{tw_q}")
+            if r3.get("results"):
+                results.append("## Twitter/X Discussions\n" + self._format_search_results(r3))
+                emit({"type": "search_done", "query": tw_q,
+                      "count": len(r3["results"]), "engine": "twitter", "auto": True})
+            else:
+                emit({"type": "search_done", "query": tw_q, "count": 0,
+                      "engine": "twitter", "auto": True,
+                      "error": r3.get("error", "")})
+            # 小红书 (中文生活消费)
+            emit({"type": "search", "query": tw_q, "engine": "xiaohongshu", "auto": True})
+            r4 = tool_xhs(tw_q)
+            context.add_search(f"xhs:{tw_q}")
+            if r4.get("results"):
+                results.append("## 小红书笔记\n" + self._format_search_results(r4))
+                emit({"type": "search_done", "query": tw_q,
+                      "count": len(r4["results"]), "engine": "xiaohongshu", "auto": True})
+            else:
+                emit({"type": "search_done", "query": tw_q, "count": 0,
+                      "engine": "xiaohongshu", "auto": True,
+                      "error": r4.get("error", "")})
+
+        return "\n\n".join(results) if results else ""
 
     def _execute_tool(self, name: str, args, skip_queries, context, emit) -> str:
         """执行工具, 推送事件, 累积 context。"""

@@ -80,7 +80,7 @@ async def xiaohongshu_search(req: SearchReq):
            f'xiaohongshu.search_feeds(keyword: "{req.query}")',
            "--timeout", "120000"]
     r = _run(cmd, timeout=130)
-    return {"ok": r["ok"], "raw": r["stdout"][:8000],
+    return {"ok": r["ok"], "raw": r["stdout"][:20000],
             "error": r["stderr"][:300] if not r["ok"] else ""}
 
 

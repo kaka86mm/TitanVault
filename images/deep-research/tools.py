@@ -179,23 +179,40 @@ def xiaohongshu_search(query: str) -> dict:
 
 
 def _parse_xhs_output(raw: str) -> list:
-    """解析小红书 MCP 搜索结果。"""
+    """解析小红书 MCP 搜索结果 (JSON: feeds[].noteCard.displayTitle + id)。"""
     results = []
-    # MCP 返回格式不定, 尽量提取 title/note_id/desc
-    blocks = re.split(r"\n(?=-\s*\{|\[?\{)", raw)
-    for b in blocks:
-        title_m = re.search(r'"(?:title|display_title|note_title)"\s*:\s*"([^"]+)"', b)
-        id_m = re.search(r'"(?:note_id|id|noteId)"\s*:\s*"([^"]+)"', b)
-        desc_m = re.search(r'"(?:desc|description|content)"\s*:\s*"([^"]*)"', b)
-        if title_m or desc_m:
-            title = (title_m.group(1) if title_m else "")[:100]
-            note_id = id_m.group(1) if id_m else ""
+    # bridge 返回 JSON, 但可能被截断; 先试完整解析, 失败则用正则提取
+    try:
+        data = json.loads(raw)
+        for f in data.get("feeds", [])[:10]:
+            nc = f.get("noteCard", {})
+            title = nc.get("displayTitle", "") or nc.get("title", "")
+            note_id = f.get("id", "")
+            desc = nc.get("desc", "") or title
+            user = nc.get("user", {}).get("nickname", "")
             results.append({
-                "title": title,
+                "title": title[:100],
                 "url": f"https://www.xiaohongshu.com/explore/{note_id}" if note_id else "",
-                "snippet": (desc_m.group(1) if desc_m else title)[:200],
+                "snippet": (f"@{user}: {desc}" if user else desc)[:200],
             })
-    return results[:10]
+        if results:
+            return results
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # JSON 截断时用正则兜底
+    titles = re.findall(r'"displayTitle"\s*:\s*"([^"]+)"', raw)
+    # note id: 24位 hex, 通常 6 开头 (小红书雪花ID)
+    ids = re.findall(r'"id"\s*:\s*"(6[a-f0-9]{22,23})"', raw)
+    nicknames = re.findall(r'"nickname"\s*:\s*"([^"]+)"', raw)
+    for i, t in enumerate(titles[:10]):
+        nid = ids[i] if i < len(ids) else ""
+        nick = nicknames[i] if i < len(nicknames) else ""
+        results.append({
+            "title": t[:100],
+            "url": f"https://www.xiaohongshu.com/explore/{nid}" if nid else "",
+            "snippet": (f"@{nick}: {t}" if nick else t)[:200],
+        })
+    return results
 
 
 def visit(url: str, goal: str = "") -> dict:
