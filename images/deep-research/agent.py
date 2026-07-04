@@ -26,7 +26,7 @@ from tools import search as tool_search, visit as tool_visit, \
 # Prompts
 # ============================================================================
 
-INITIAL_PROMPT = """You are QUEST, a deep research agent. Answer the user's question thoroughly by SEARCHING the web, reading pages, then writing a high-quality research report.
+INITIAL_PROMPT = """You are QUEST, a deep research agent. Today's date: {today}. Answer the user's question by SEARCHING the web, reading pages, then writing a research report.
 
 ## Tools (output <tool_call> to use one)
 - exa: BEST search (semantic, high quality). Example: <tool_call>{{"name":"exa","arguments":{{"query":["your query"]}}}}}}</tool_call>
@@ -38,36 +38,34 @@ INITIAL_PROMPT = """You are QUEST, a deep research agent. Answer the user's ques
 ## Research Strategy (CRITICAL — follow strictly)
 1. You MUST call tools. Do NOT answer from memory.
 2. BREAK DOWN the question into 3-5 sub-questions, search EACH separately.
-3. Search at least 5 times total (different angles: overview, details, comparisons, data/numbers, recent news).
-4. Start with exa (best results), then search for follow-ups and Chinese sources.
+3. Search at least 5 times total (different angles).
+4. Start with exa, then search for follow-ups.
 5. Visit 3-5 key pages to read details (not just snippets).
-6. If topic involves opinions/discussions → also call twitter.
 
-## Report Format (write this when done researching)
+## Anti-Hallucination Rules (CRITICAL)
+- NEVER fabricate numbers, prices, dates, or statistics. Only use data from search results.
+- NEVER reference future dates. If you don't have data for a time period, say "data not available".
+- Every number/price/date in your report MUST come from a visited page. If unsure, omit it.
+- Write in ONE language only (match the user's question language).
+- Do NOT repeat content. Write the report ONCE.
+
+## Report Format
 ```
-# [Research Title]
+# [Title]
 
-> **Summary**: 2-3 sentence overview of key findings.
+> **Summary**: 2-3 sentence overview.
 
-## 1. [First Section]
-[Detailed analysis with data, not just bullet points]
-
-## 2. [Second Section]
-...
+## 1. [Section]
+[Detailed analysis with data from search results, cited with [source: URL]]
 
 ## N. Conclusion
-[Synthesize findings, note limitations]
 ```
 
 ## Citation Rules
-- Use [source: URL] at the END of sentences. Example: B300 costs 770万元 [source: https://...].
-- Do NOT use （来源：[网站名](URL)）format — it is verbose.
-- Every key fact MUST have a citation.
+- Use [source: URL] at the END of sentences with data.
+- Every key fact MUST have a citation from a page you visited.
 
-## Process
-Search many angles → visit key pages → write report.
-
-When you have enough info, STOP calling tools and write the report."""
+When you have enough info, STOP calling tools and write the report ONCE."""
 
 
 ITERATE_PROMPT = """You are QUEST, a deep research agent. The user wants to IMPROVE an existing research report.
@@ -256,7 +254,7 @@ class ResearchAgent:
             )
             skip_queries = context.searched_queries
         else:
-            system = INITIAL_PROMPT
+            system = INITIAL_PROMPT.format(today=datetime.now().strftime("%Y-%m-%d"))
             skip_queries = []
             context = context or ResearchContext("temp")
 
@@ -290,17 +288,27 @@ class ResearchAgent:
         for turn in range(self.max_turns):
             emit({"type": "thinking", "turn": turn + 1, "max_turns": self.max_turns})
 
-            # LLM 推理 (关闭思维链: QUEST-9B 是推理模型, 默认把 max_tokens 花在
-            # reasoning_content 上导致 content 为空 → 报告失败)
+            # LLM 推理
+            # QUEST 官方推荐参数 (react_agent.py): max_tokens=10000, temp=0.6, top_p=0.95
+            # QUEST 基于 Qwen3.5, llama.cpp 会把思维链分离到 reasoning_content 字段。
+            # 官方做法: content = reasoning_content + content (合并后用)。
             try:
                 resp = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    max_tokens=8192,
-                    temperature=0.7,
-                    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+                    max_tokens=10000,
+                    temperature=0.6,
+                    top_p=0.95,
+                    presence_penalty=1.1,
                 )
-                reply = resp.choices[0].message.content or ""
+                msg = resp.choices[0].message
+                content = msg.content or ""
+                reasoning = getattr(msg, "reasoning_content", None) or ""
+                # 合并: 推理内容 + 实际输出 (官方做法)
+                # _parse_tool_call 和 _extract_report 会从中提取有用部分
+                reply = content if content.strip() else reasoning
+                if not reply.strip():
+                    reply = reasoning + content  # 都有就拼一起
             except Exception as e:
                 emit({"type": "error", "message": f"LLM error: {e}"})
                 return f"# Research Failed\n\nLLM error: {e}"
@@ -353,10 +361,14 @@ class ResearchAgent:
         try:
             resp = self.client.chat.completions.create(
                 model=self.model, messages=summary_messages,
-                max_tokens=4096, temperature=0.7,
-                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+                max_tokens=10000, temperature=0.6, top_p=0.95,
+                presence_penalty=1.1,
             )
-            report = self._extract_report(resp.choices[0].message.content or "")
+            msg = resp.choices[0].message
+            content = msg.content or ""
+            reasoning = getattr(msg, "reasoning_content", None) or ""
+            raw = content if content.strip() else (reasoning + content)
+            report = self._extract_report(raw)
         except Exception as e:
             report = ""
 
@@ -754,33 +766,47 @@ class ResearchAgent:
         """从 LLM 输出提取干净的研究报告。
 
         清理顺序:
-        1. tool_call 标记 (闭合+未闭合)
-        2. <think> 思维链块
-        3. tool_response 残留 (工具返回的搜索结果/网页内容)
-        4. 搜索结果块 (## Search Results: ... + 编号列表)
-        5. JSON 片段 / 伪 tool 标记
-        6. 找第一个 markdown 标题作为报告起点
+        1. tool_call/think/tool_response 标记
+        2. </note> 等 XML 残留
+        3. 搜索结果块、JSON 片段
+        4. 找第一个 markdown 标题作为报告起点
+        5. 去重 (QUEST 可能中英文各输出一遍)
         """
-        # 1. tool_call 标记
-        text = re.sub(r"<tool_call>.*?</tool_call>", "", text, flags=re.DOTALL)
-        text = re.sub(r"<tool_call>.*", "", text, flags=re.DOTALL)
-        # 2. <think> 块 (闭合+未闭合)
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-        text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
-        # 3. tool_response 残留
-        text = re.sub(r"<tool_response>.*?</tool_response>", "", text, flags=re.DOTALL)
-        text = re.sub(r"<tool_response>.*", "", text, flags=re.DOTALL)
-        # 4. 搜索结果块: "## Search Results: xxx" 后跟编号列表 (采集产物, 不是报告)
+        # 1. 各种标记块
+        for tag in ["tool_call", "think", "tool_response", "note"]:
+            text = re.sub(r"<%s>.*?</%s>" % (tag, tag), "", text, flags=re.DOTALL)
+            text = re.sub(r"<%s>.*" % tag, "", text, flags=re.DOTALL)
+            text = re.sub(r"</%s>" % tag, "", text)
+        # 2. 搜索结果块
         text = re.sub(r"^##\s*Search Results?:.*?(?=^##\s|\Z)", "", text,
                       flags=re.DOTALL | re.MULTILINE)
-        # 5. 伪 tool 标记 [visit] / [search] / [memory]
+        # 3. 伪 tool 标记 + 裸 JSON
         text = re.sub(r"\[(?:visit|search|memory)\][^\n]*\n(?:[^\n]*\n){0,5}", "", text)
-        # 6. 裸 JSON 片段 (tool call 残留: {"name": ... })
         text = re.sub(r'^\s*\{["\']name["\'].*?\}.*$', "", text, flags=re.MULTILINE)
-        # 7. 找第一个 markdown 标题作为报告起点 (跳过前面的杂项)
+        # 4. 找第一个 markdown 标题作为报告起点
         m = re.search(r"^#{1,3}\s+.+", text, re.MULTILINE)
         if m:
             text = text[m.start():]
-        # 清理多余空行 + 行首空格
+        # 5. 去重: QUEST 可能中英文各输出一遍报告
+        # 找所有 ## 或 # 开头的顶级标题位置, 如果报告明显重复 (>2个相同标题), 截到第一次重复处
+        headings = re.findall(r"^(#{1,2}\s+.+)$", text, re.MULTILINE)
+        if len(headings) >= 4:
+            # 检测重复: 如果前半段和后半段标题高度相似, 截取前半段
+            mid = len(text) // 2
+            first_half_headings = [h for h in headings if text.find(h) < mid]
+            second_half_headings = [h for h in headings if text.find(h) >= mid]
+            if len(first_half_headings) >= 2 and len(second_half_headings) >= 2:
+                # 简单检测: 如果第二个 ## 标题的内容和第一个类似, 截断
+                first_h1 = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+                if first_h1:
+                    h1_text = first_h1.group(1).strip()
+                    # 找 h1_text 在后面的重复
+                    later = text[first_h1.end():]
+                    if h1_text in later or later.find("Research Report") >= 0:
+                        # 截到第一次重复的标题前
+                        dup_pos = later.find("Research Report")
+                        if dup_pos >= 0:
+                            text = text[:first_h1.end() + dup_pos].rstrip()
+        # 6. 清理多余空行
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
         return text
