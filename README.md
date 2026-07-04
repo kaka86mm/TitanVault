@@ -86,9 +86,10 @@ Hermes ships with **scenario-driven skills** — not raw API wrappers, but end-t
 | **titanvault-ops** | Operate & troubleshoot the workstation (health, heal, backup, report) | "check status", "heal", "disk full" |
 | **titanvault-meeting** | Turn a meeting recording into structured markdown minutes | "process this meeting", "transcribe recording", "meeting minutes" |
 | **titanvault-ingest** | Ingest any URL / PDF / text into the knowledge base, then ask questions | "save this link to notebook", "ingest this PDF", "what does this say" |
+| **titanvault-research** | Deep research agent — QUEST-9B autonomously searches, reads, and writes a cited report | "research X", "deep dive into X", "investigate X thoroughly" |
 | **titanvault-knowledge** | Hardware & architecture knowledge base (passive) | hardware questions, GPU/port/config lookups |
 
-**Meeting skill** offers two paths: *full mode* (Aham Voice: transcription + speaker diarization + AI minutes + emotion) or *quick mode* (SenseVoice: fast plain-text transcript). The ingest skill auto-detects PDFs and routes them through MinerU for table/formula-preserving parsing before embedding.
+**Meeting skill** offers two paths: *full mode* (Aham Voice: transcription + speaker diarization + AI minutes + emotion) or *quick mode* (SenseVoice: fast plain-text transcript). The ingest skill auto-detects PDFs and routes them through MinerU for table/formula-preserving parsing before embedding. The research skill runs [QUEST-9B](https://osu-nlp-group.github.io/QUEST/) (OSU NLP's deep research model) in a ReAct loop with SearXNG + page scraping, then chains into ingest to store the report for RAG.
 
 Two **meta-skills** are also included for building and refining further skills:
 

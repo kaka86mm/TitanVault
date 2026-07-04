@@ -1,0 +1,41 @@
+# ops/research/quest_config.yaml — QUEST deep research agent 配置
+#
+# QUEST agent 运行时配置。指向本机服务, 无外部 API 依赖。
+# 由 run_quest.py 读取。
+
+# QUEST-9B 推理端点 (llama.cpp :8093, OpenAI 兼容)
+main_model:
+  base_url: "http://localhost:8093/v1"
+  api_key: "EMPTY"
+  model_name: "QUEST-9B"
+  hostname: "localhost"
+  port: 8093
+
+# 记忆/摘要模型 (用主力 35B 做摘要, 质量好)
+memory_model:
+  base_url: "http://localhost:4000/v1"   # LiteLLM
+  api_key: "${LITELLM_MASTER_KEY}"
+  model_name: "Qwen3.6-35B-A3B"
+
+# 搜索配置
+search:
+  searxng_url: "http://localhost:8087"
+  max_results: 10
+
+# 访问配置
+visit:
+  chrome_cdp_url: "http://localhost:9222"
+  max_pages_per_call: 5
+  summary_threshold: 3000   # 超过此长度走摘要
+
+# agent 循环参数
+agent:
+  max_llm_calls: 30         # 每个研究问题最多 30 轮 LLM 调用
+  max_tool_calls: 20        # 最多 20 次工具调用
+  context_threshold: 100000 # 超过则触发记忆压缩
+
+# 输出
+output:
+  format: "markdown"        # markdown / json
+  include_citations: true
+  save_dir: "/data/quest-reports"  # 报告保存目录
