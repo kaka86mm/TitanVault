@@ -21,6 +21,7 @@ ExecStart=/opt/llama.cpp/llama-server \
 Restart=always
 RestartSec=5
 Environment=GGML_VULKAN_DEVICE=0
+Environment=LD_LIBRARY_PATH=/opt/llama.cpp
 TimeoutStartSec=300
 
 [Install]

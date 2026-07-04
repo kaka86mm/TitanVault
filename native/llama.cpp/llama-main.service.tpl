@@ -37,6 +37,8 @@ Restart=always
 RestartSec=5
 # GGML_VULKAN_DEVICE=0 选第一个 Vulkan 设备 (395 仅一个核显)
 Environment=GGML_VULKAN_DEVICE=0
+# b9840+ 把 server 实现拆到 .so, 需指明库搜索路径 (build.sh 默认装 /opt/llama.cpp)
+Environment=LD_LIBRARY_PATH=/opt/llama.cpp
 # 模型文件大 (22.8GB), 关闭 systemd 启动超时 (默认 90s 不够加载 35B)
 TimeoutStartSec=600
 
