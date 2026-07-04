@@ -1,0 +1,5 @@
+[
+  {"id": 1, "prompt": "深度研究一下 AMD RDNA 4 架构相比 3.5 有哪些改进", "expected": "skill 确认问题范围后, 启动 QUEST-9B 自主搜索+阅读+生成带引用的报告"},
+  {"id": 2, "prompt": "全面分析一下 Vulkan 和 ROCm 在 LLM 推理上的性能差异", "expected": "skill 走 deep research 流程, 多轮搜索, 报告存盘, 询问是否入库"},
+  {"id": 3, "prompt": "这个研究报告存进知识库", "expected": "skill 识别是已完成研究的后续, 调 ingest 把 /data/quest-reports 里的报告存入 Open Notebook"}
+]

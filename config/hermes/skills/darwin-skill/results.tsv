@@ -5,3 +5,5 @@ timestamp	commit	skill	old_score	new_score	status	dimension	note	eval_mode
 2026-07-04T12:30	baseline	titanvault-ingest	-	83.9	baseline	-	初始评估	dry_run
 2026-07-04T12:35	dim4-fix	titanvault-ingest	83.9	85.1	keep	检查点设计	补GATE标记	dry_run
 2026-07-04T12:50	full-test	titanvault-ingest	85.1	89.7	keep	实测表现	修复端点+3个test-prompt跑通	full_test
+2026-07-04T18:00	baseline	titanvault-research	-	82.2	baseline	-	初始评估	full_test
+2026-07-04T18:10	dim4-fix	titanvault-research	82.2	86.8	keep	检查点设计	补STOP/GATE+场景C+max_turns	full_test

@@ -43,20 +43,25 @@ terminal(command="$HOME/quest-venv/bin/python $TITANVAULT_REPO/ops/research/run_
 ### 场景 A: 深度研究一个问题
 
 ```
-Step 1: 🔴 GATE · 跟用户确认问题范围
+Step 1: 🔴 STOP CHECKPOINT · 跟用户确认问题范围
   「我用 QUEST deep research 来调研【XX】。这会自主搜索 10-20 个网页，
     阅读 5-10 个页面，生成带引用的报告。预计 3-5 分钟。继续？」
   - 用户补充关注点 → 记下来加到问题里
   - 用户确认 → 继续
+  - 用户要更快 → 减少 max_turns 到 3 (默认 4-5)
 
 Step 2: 运行
   $HOME/quest-venv/bin/python ops/research/run_quest.py "XX 的 YY 方面怎么样?"
+  # max_turns 默认 4 (quest_config.yaml 里配), 复杂问题可加到 6, 简单问题减到 3
+  # agent 会打印每轮的搜索 query 和工具调用, 可实时看进度
 
-Step 3: 交付
+Step 3: 🔴 STOP CHECKPOINT · 交付前确认
   报告保存到 /data/quest-reports/quest-<时间戳>-<问题>.md
-  在对话里给摘要 + 文件路径。
-  问用户: 要不要把这份报告存入知识库 (Open Notebook)?
-  - 要 → 调 titanvault-ingest skill 把报告存入
+  在对话里给摘要 (报告前 500 字) + 文件路径。
+  问用户: 「报告够用吗? 要不要存入知识库 (Open Notebook) 做 RAG?」
+  - 够用 + 存 → 调场景 B
+  - 要补充 → 再跑一次, 问题更具体 (如 "补充 XX 方面")
+  - 够用不存 → 结束
 ```
 
 ### 场景 B: 研究报告存入知识库（串联 ingest）
@@ -66,6 +71,15 @@ Step 3: 交付
 bash ops/ingest/ingest.sh text "$(cat /data/quest-reports/quest-*.md)" --title "调研: XX"
 ```
 之后可以就这份报告提问：`bash ops/ingest/ingest.sh ask "报告里提到的 YY 是什么意思?"`
+
+### 场景 C: 研究跑到一半想调整——「换个方向搜」/「太慢了」
+
+```
+🔴 GATE: 研究是阻塞式的 (QUEST agent 在跑), 不能中途改方向。
+  - 想换方向 → Ctrl-C 停掉, 重新跑 (已有搜索结果会丢失)
+  - 觉得太慢 → 等它跑完 (max_turns 兜底), 下次减少 max_turns
+  - 想看进度 → 看 agent 的 stdout (每轮打印 query 和工具调用)
+```
 
 ## 失败模式速查表
 
