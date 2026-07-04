@@ -58,12 +58,15 @@ memory:
 
 # STT/TTS: 指向本机 SenseVoice (ASR) + Kokoro (TTS), 非 OpenAI 云端。
 # 原生 Hermes 用 localhost + 容器发布的宿主机端口访问。
+# Kokoro voice: zf_* = 中文女声, zm_* = 中文男声, af_* = 英文女声, am_* = 英文男声。
+# 完整列表 GET http://localhost:8081/v1/audio/voices (67个, 含日/韩/法/意/葡)。
+# 主场景中文 → 默认 zf_xiaoxiao。英文场景用 af_sky。
 tts:
   provider: openai
   openai:
     base_url: http://localhost:8081/v1
     model: kokoro
-    voice: kf
+    voice: zf_xiaoxiao
 stt:
   provider: openai
   openai:
