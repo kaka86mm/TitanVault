@@ -3,7 +3,7 @@ tools.py — Deep Research 工具集 (SearXNG 搜索 + 网页阅读)
 
 本地化实现, 无外部付费 API。
 - search: SearXNG 元搜索引擎
-- visit: requests + trafilatura 网页抓取
+- visit: requests + trafilatura 网页抓取, 失败 fallback Jina Reader (agent-reach)
 """
 import os
 import re
@@ -14,8 +14,15 @@ from urllib.parse import urlparse
 
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://host-gateway:8087")
 MINERU_URL = os.environ.get("MINERU_URL", "http://host-gateway:18080")
-# 已知需要 JS 渲染的域名 (走 Chrome CDP, 当前简化为标记跳过)
-JS_HEAVY_DOMAINS = {"twitter.com", "x.com", "reddit.com", "instagram.com"}
+# Jina Reader (agent-reach 的 web 渠道后端): 能读 JS 渲染页面, 返回干净 markdown。
+# 走 mihomo 代理 (r.jina.ai 国内不可达)。
+JINA_READER_URL = os.environ.get("JINA_READER_URL", "https://r.jina.ai")
+# HTTP/HTTPS 代理 (mihomo, host 模式监听宿主 7890)
+HTTP_PROXY = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy") or "http://host-gateway:7890"
+PROXIES = {"http": HTTP_PROXY, "https": HTTP_PROXY} if HTTP_PROXY else None
+# 已知需要 JS 渲染的域名 — 直接走 Jina Reader (trafilatura 抓不到)
+JS_HEAVY_DOMAINS = {"twitter.com", "x.com", "reddit.com", "instagram.com",
+                    "medium.com", "zhihu.com", "bilibili.com"}
 
 # 验证用的停用词 (构造 verify query 时去掉)
 STOP_WORDS = frozenset(
@@ -59,32 +66,69 @@ def search(query: str, skip_queries: list = None) -> dict:
 
 
 def visit(url: str, goal: str = "") -> dict:
-    """抓取网页正文。返回 {"url", "content", "goal"}."""
-    # 检查 JS 重度站点
-    domain = urlparse(url).netloc.lower()
-    if any(d in domain for d in JS_HEAVY_DOMAINS):
-        return {"url": url, "content": "", "error": "JS-heavy site, skipped"}
+    """抓取网页正文。返回 {"url", "content", "goal"}.
 
-    # 抓取 HTML
+    策略 (agent-reach 集成):
+    1. JS 重度站点 (twitter/reddit/medium/zhihu 等) → 直接走 Jina Reader
+    2. 普通站点 → requests + trafilatura
+    3. trafilatura 提取失败/内容太短 → fallback Jina Reader
+    """
+    domain = urlparse(url).netloc.lower()
+
+    # JS 重度站点: 直接 Jina Reader (trafilatura 抓不到 JS 渲染内容)
+    if any(d in domain for d in JS_HEAVY_DOMAINS):
+        return _visit_jina(url, goal)
+
+    # 普通站点: 先试 requests + trafilatura
     try:
         headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                                  "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"}
-        resp = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        resp = requests.get(url, headers=headers, timeout=15, allow_redirects=True,
+                            proxies=PROXIES)
         resp.raise_for_status()
         if resp.encoding == "ISO-8859-1":
             resp.encoding = resp.apparent_encoding
         html = resp.text
     except Exception as e:
+        # requests 失败 → 试 Jina Reader (可能是国外站点需代理, Jina 自带代理)
+        jina_result = _visit_jina(url, goal)
+        if jina_result.get("content"):
+            return jina_result
         return {"url": url, "content": "", "error": str(e)}
 
     # 提取正文
     text = _html_to_text(html)
     if not text or len(text) < 50:
+        # trafilatura 失败 → fallback Jina Reader
+        jina_result = _visit_jina(url, goal)
+        if jina_result.get("content"):
+            return jina_result
         return {"url": url, "content": "", "error": "No readable content"}
 
     # 截断防超长
     text = text[:8000]
     return {"url": url, "content": text, "goal": goal}
+
+
+def _visit_jina(url: str, goal: str = "") -> dict:
+    """通过 Jina Reader (agent-reach web 后端) 读取网页。
+    Jina Reader 能读 JS 渲染页面, 返回干净 markdown。走 mihomo 代理。
+    """
+    try:
+        jina_url = f"{JINA_READER_URL}/{url}"
+        resp = requests.get(jina_url, timeout=20, proxies=PROXIES,
+                            headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+        text = resp.text.strip()
+        if not text or len(text) < 50:
+            return {"url": url, "content": "", "error": "Jina Reader returned empty"}
+        # 去掉 Jina 加的元信息头 (Title:/URL Source:/Published Time: 等)
+        text = re.sub(r"^(Title|URL Source|Published Time|Warning):.*\n", "",
+                      text, flags=re.MULTILINE).strip()
+        return {"url": url, "content": text[:8000], "goal": goal,
+                "source": "jina-reader"}
+    except Exception as e:
+        return {"url": url, "content": "", "error": f"Jina Reader failed: {e}"}
 
 
 def _html_to_text(html: str) -> str:
@@ -266,10 +310,10 @@ def verify_claim(claim: str) -> dict:
 
 
 def verify_url(url: str) -> dict:
-    """检查引用 URL 是否可达且有内容。"""
+    """检查引用 URL 是否可达且有内容。走代理验证国外链接。"""
     try:
         resp = requests.head(url, timeout=8, allow_redirects=True,
-                             headers={"User-Agent": "Mozilla/5.0"})
+                             headers={"User-Agent": "Mozilla/5.0"}, proxies=PROXIES)
         if resp.status_code < 400:
             return {"reachable": True, "status_code": resp.status_code}
         return {"reachable": False, "status_code": resp.status_code}
