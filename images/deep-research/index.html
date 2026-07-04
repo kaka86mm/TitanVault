@@ -218,6 +218,14 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
   transition: all 0.15s; font-size: var(--text-sm); }
 .iter-input button:hover { filter: brightness(1.1); }
 .iter-input button:disabled { opacity: 0.4; cursor: not-allowed; }
+/* 迭代附件上传按钮 */
+.iter-attach-btn { display: flex; align-items: center; justify-content: center;
+  width: 40px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md); cursor: pointer; font-size: 16px; flex-shrink: 0;
+  transition: all 0.15s; }
+.iter-attach-btn:hover { background: var(--surface-hover); border-color: var(--accent); }
+.iter-chips { padding: 0 var(--space-3) var(--space-2); display: flex; flex-wrap: wrap; gap: 4px; flex-shrink: 0; }
+.iter-chips:empty { display: none; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -354,8 +362,13 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
             <div class="iter-input">
               <textarea id="iterInput" placeholder="迭代指令：补充... / 展开... / 换个角度..."
                 onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitIteration()}"></textarea>
+              <label class="iter-attach-btn" title="补充研究资料 (PDF/DOCX/TXT)">
+                📎<input type="file" id="iterFile" multiple accept=".pdf,.docx,.txt,.md" style="display:none"
+                  onchange="handleFiles('iter')">
+              </label>
               <button onclick="submitIteration()" id="iterBtn">迭代</button>
             </div>
+            <div class="iter-chips" id="iterChips"></div>
           </div>
         </div>
       </div>
@@ -679,12 +692,18 @@ async function showVersion(v) {
 // ── Iteration ──
 async function submitIteration() {
   const content = document.getElementById('iterInput').value.trim();
-  if (!content || !currentSession) return;
+  if (!content && !pendingIterFiles.length) return;
+  if (!currentSession) return;
   document.getElementById('iterBtn').disabled = true;
   document.getElementById('iterInput').value = '';
-  addActivity('user', { label: '迭代指令', content });
+  // 发送附件 (如果有)
+  const attachments = pendingIterFiles.map(f => ({ filename: f.filename, content_b64: f.content_b64 }));
+  pendingIterFiles = [];
+  renderChips('iter');
+  const msg = content || '(补充研究资料)';
+  addActivity('user', { label: '迭代指令' + (attachments.length ? ` + ${attachments.length}个附件` : ''), content: msg });
   const r = await api(`/api/sessions/${currentSession}/message`, {
-    method: 'POST', body: JSON.stringify({ content })
+    method: 'POST', body: JSON.stringify({ content: msg, attachments })
   });
   if (r.status === 'running') {
     connectSSE(currentSession);
@@ -756,11 +775,13 @@ function timeAgo(iso) {
 }
 
 // ── File attachments ──
-let pendingFiles = [];  // [{filename, content_b64}]
+let pendingFiles = [];       // welcome 用的附件
+let pendingIterFiles = [];   // iter 用的附件
 
 async function handleFiles(context) {
   const input = document.getElementById(context + 'File');
   if (!input.files.length) return;
+  const store = context === 'iter' ? pendingIterFiles : pendingFiles;
   for (const file of input.files) {
     if (file.size > 10 * 1024 * 1024) {
       alert(file.name + ' 超过 10MB 限制');
@@ -768,7 +789,7 @@ async function handleFiles(context) {
     }
     const buf = await file.arrayBuffer();
     const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    pendingFiles.push({ filename: file.name, content_b64: b64 });
+    store.push({ filename: file.name, content_b64: b64 });
   }
   input.value = '';
   renderChips(context);
@@ -777,13 +798,15 @@ async function handleFiles(context) {
 function renderChips(context) {
   const el = document.getElementById(context + 'Chips');
   if (!el) return;
-  el.innerHTML = pendingFiles.map((f, i) =>
+  const store = context === 'iter' ? pendingIterFiles : pendingFiles;
+  el.innerHTML = store.map((f, i) =>
     `<div class="attach-chip">📎 ${esc(f.filename)} <span class="rm" onclick="removeFile(${i},'${context}')">✕</span></div>`
   ).join('');
 }
 
 function removeFile(idx, context) {
-  pendingFiles.splice(idx, 1);
+  const store = context === 'iter' ? pendingIterFiles : pendingFiles;
+  store.splice(idx, 1);
   renderChips(context);
 }
 

@@ -443,23 +443,35 @@ class ResearchAgent:
         return "\n".join(parts)
 
     def _build_fallback_report(self, question: str, context: ResearchContext) -> str:
-        """LLM 总结失败时的兜底: 用已收集的知识拼报告。"""
-        lines = [f"# Research: {question}\n"]
-        lines.append(f"> 自动生成 (基于 {len(context.searched_queries)} 次搜索, "
-                      f"{len(context.visited_urls)} 个页面)\n")
+        """LLM 总结失败时的兜底: 用已收集的知识整理成研究笔记。
+
+        注意: 这里展示的是"采集到的信息摘要", 不是 AI 生成的分析报告。
+        会明确标注, 避免与正式报告混淆。
+        """
+        lines = [f"# {question}\n"]
+        n_search = len(context.searched_queries)
+        n_visit = len(context.visited_urls)
+        lines.append(f"> ⚠️ AI 生成报告失败, 以下为采集到的原始信息摘要 "
+                     f"(基于 {n_search} 次搜索, {n_visit} 个页面访问)。"
+                     f"可点击「迭代」让 AI 基于这些信息生成正式报告。\n")
 
         if context.visited_urls:
-            lines.append("## Key Findings\n")
-            for url, snippet in list(context.visited_urls.items())[:8]:
-                lines.append(f"### {url}\n")
-                lines.append(f"{snippet[:800]}\n")
-                lines.append(f"[source: {url}]\n")
-        else:
-            lines.append("## Search Results\n")
-            lines.append("The research agent searched but could not extract "
-                          "detailed page content. Key search queries:\n")
-            for q in context.searched_queries:
+            lines.append("## 采集到的关键信息\n")
+            for i, (url, snippet) in enumerate(list(context.visited_urls.items())[:6], 1):
+                # 提取前 3 句作为摘要, 不堆全文
+                sentences = snippet.split("。")
+                summary = "。".join(sentences[:3])
+                if len(summary) < 20:
+                    summary = snippet[:300]
+                lines.append(f"{i}. {summary[:400]}\n")
+                lines.append(f"   [source: {url}]\n")
+        elif context.searched_queries:
+            lines.append("## 搜索记录\n")
+            lines.append("AI 进行了以下搜索但未能提取页面内容:\n")
+            for q in context.searched_queries[:10]:
                 lines.append(f"- {q}")
+        else:
+            lines.append("未能采集到有效信息,请尝试重新研究或换个问法。\n")
 
         return "\n".join(lines)
 
@@ -668,21 +680,36 @@ class ResearchAgent:
         return "\n".join(lines)
 
     def _extract_report(self, text: str) -> str:
-        """去掉残留 tool_call 标记和非内容行, 返回干净报告。"""
-        # 去掉闭合的 <tool_call>...</tool_call>
+        """从 LLM 输出提取干净的研究报告。
+
+        清理顺序:
+        1. tool_call 标记 (闭合+未闭合)
+        2. <think> 思维链块
+        3. tool_response 残留 (工具返回的搜索结果/网页内容)
+        4. 搜索结果块 (## Search Results: ... + 编号列表)
+        5. JSON 片段 / 伪 tool 标记
+        6. 找第一个 markdown 标题作为报告起点
+        """
+        # 1. tool_call 标记
         text = re.sub(r"<tool_call>.*?</tool_call>", "", text, flags=re.DOTALL)
-        # 去掉未闭合的 <tool_call> (到行尾或文件尾)
         text = re.sub(r"<tool_call>.*", "", text, flags=re.DOTALL)
-        # 去掉 [visit] / [search] 等伪 tool 标记块
-        text = re.sub(r"\[(?:visit|search|memory)\][^\n]*\n(?:[^\n]*\n){0,5}", "", text)
-        # 去掉 <think> 块
+        # 2. <think> 块 (闭合+未闭合)
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-        # 去掉残留的 thinking 开头
-        text = re.sub(r"^<think>.*$", "", text, flags=re.MULTILINE)
-        # 找到第一个 markdown 标题 (#) 作为报告起点
-        m = re.search(r"^(#{1,3}\s+.+)$", text, re.MULTILINE)
+        text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
+        # 3. tool_response 残留
+        text = re.sub(r"<tool_response>.*?</tool_response>", "", text, flags=re.DOTALL)
+        text = re.sub(r"<tool_response>.*", "", text, flags=re.DOTALL)
+        # 4. 搜索结果块: "## Search Results: xxx" 后跟编号列表 (采集产物, 不是报告)
+        text = re.sub(r"^##\s*Search Results?:.*?(?=^##\s|\Z)", "", text,
+                      flags=re.DOTALL | re.MULTILINE)
+        # 5. 伪 tool 标记 [visit] / [search] / [memory]
+        text = re.sub(r"\[(?:visit|search|memory)\][^\n]*\n(?:[^\n]*\n){0,5}", "", text)
+        # 6. 裸 JSON 片段 (tool call 残留: {"name": ... })
+        text = re.sub(r'^\s*\{["\']name["\'].*?\}.*$', "", text, flags=re.MULTILINE)
+        # 7. 找第一个 markdown 标题作为报告起点 (跳过前面的杂项)
+        m = re.search(r"^#{1,3}\s+.+", text, re.MULTILINE)
         if m:
             text = text[m.start():]
-        # 清理多余空行
+        # 清理多余空行 + 行首空格
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
         return text

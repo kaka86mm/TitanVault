@@ -268,6 +268,23 @@ async def send_message(sid: str, req: SendMessage):
     if session_status.get(sid, {}).get("status") == "running":
         raise HTTPException(409, "Session is already running")
 
+    # 处理迭代时用户补充的附件 (预处理: PDF→MinerU, DOCX→python-docx, TXT→直读)
+    if req.attachments:
+        for att in req.attachments:
+            filename = att.get("filename", "unknown")
+            content_b64 = att.get("content_b64", "")
+            try:
+                content_bytes = base64.b64decode(content_b64)
+                result = preprocess_attachment(filename, content_bytes)
+                if result.get("md"):
+                    ctx.add_attachment(filename, result["md"],
+                                      result.get("source_type", "text"))
+                else:
+                    ctx.add_attachment(filename,
+                                      f"[附件解析失败: {result.get('error','')}]", "error")
+            except Exception as e:
+                ctx.add_attachment(filename, f"[附件处理异常: {e}]", "error")
+
     # 重置事件队列
     event_queues[sid] = asyncio.Queue()
 
@@ -276,7 +293,8 @@ async def send_message(sid: str, req: SendMessage):
                          daemon=True)
     t.start()
 
-    return {"session_id": sid, "status": "running", "message": req.content}
+    return {"session_id": sid, "status": "running", "message": req.content,
+            "attachments": len(ctx.attachments)}
 
 
 @app.get("/api/sessions/{sid}/stream")
