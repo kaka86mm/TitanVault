@@ -29,3 +29,18 @@ services:
     volumes:
       - ../config/frp/frpc.toml:/etc/frp/frpc.toml:ro
     logging: *id001
+
+  # MetacubeXd — mihomo 官方面板 (纯前端, 连 mihomo 的 9090 API)。
+  # 走 mozin bridge 网络, 用 host-gateway:9090 访问 host 模式的 mihomo API。
+  metacubexd:
+    image: ghcr.io/metacubex/metacubexd:latest
+    profiles: [network]
+    restart: unless-stopped
+    networks: [mozin]
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    logging: *id001
+
+networks:
+  mozin:
+    driver: bridge

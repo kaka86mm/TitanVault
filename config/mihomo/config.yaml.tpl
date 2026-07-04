@@ -8,6 +8,12 @@ allow-lan: false
 mode: rule
 log-level: info
 
+# RESTful API (供 metacubexd 面板管理)。
+# mihomo 是 host 网络模式, 0.0.0.0:9090 直接监听宿主端口, 内网/bridge 容器可访问。
+external-controller: 0.0.0.0:9090
+# API 鉴权密钥 (install.sh 自动生成), metacubexd 连接时需填此 secret。
+secret: "${MIHOMO_API_SECRET}"
+
 # 订阅内容由 install.sh 填充 (取消下面注释并替换 URL):
 # proxy-providers:
 #   subscribe:

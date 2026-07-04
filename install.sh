@@ -203,6 +203,7 @@ phase1_configure() {
     HERMES_API_SERVER_KEY=$(openssl rand -hex 16)
     OPEN_NOTEBOOK_SURREAL_PASSWORD=$(openssl rand -hex 16)
     OPEN_NOTEBOOK_ENCRYPTION_KEY=$(openssl rand -hex 32)
+    MIHOMO_API_SECRET=$(openssl rand -hex 16)
 
     # 写 .env: 以 .env.example 为基底, 追加生成的值。
     # ⚠ .env.example 含空占位 (如 POSTGRES_PASSWORD=), cp 后必须删掉这些空行,
@@ -224,6 +225,7 @@ phase1_configure() {
         echo "HERMES_API_SERVER_KEY=$HERMES_API_SERVER_KEY"
         echo "OPEN_NOTEBOOK_SURREAL_PASSWORD=$OPEN_NOTEBOOK_SURREAL_PASSWORD"
         echo "OPEN_NOTEBOOK_ENCRYPTION_KEY=$OPEN_NOTEBOOK_ENCRYPTION_KEY"
+        echo "MIHOMO_API_SECRET=$MIHOMO_API_SECRET"
         echo "MIHOMO_SUBSCRIBE_URL=\"$MIHOMO_SUBSCRIBE_URL\""
         echo "FRP_SERVER_ADDR=\"$FRP_SERVER_ADDR\""
         echo "FRP_TOKEN=\"$FRP_TOKEN\""

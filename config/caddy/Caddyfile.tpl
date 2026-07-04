@@ -47,6 +47,12 @@
 		reverse_proxy deep-research:8099
 	}
 
+	# MetacubeXd — mihomo 代理管理面板 (反代到 bridge 容器, 容器内 nginx:80)
+	# 面板连接 mihomo API 时, 后端地址填: http://<host-ip>:9090 + secret
+	handle_path /metacube/* {
+		reverse_proxy metacubexd:80
+	}
+
 	# Hermes gateway API — ops agent (:8642, 运维 agent)
 	# TitanVault AI 助手专用: 管理 docker/systemctl/故障排查, approvals=off
 	# 通用对话用户自己开 dashboard (http://<host>:9119)

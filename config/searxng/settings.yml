@@ -41,36 +41,39 @@ outgoing:
 # 引擎筛选: 国内可达的启用, 国外不可达的禁用 (避免每次搜索都等超时)
 engines:
   # === 国内可达引擎 (启用) ===
+  # Bing: www.bing.com 在国内会 302→cn.bing.com, 而 SearXNG 默认 allow_redirects=false
+  # 导致拿到空响应 → 0 结果。修复: 直连 cn.bing.com + 允许重定向。
   - name: bing
     disabled: false
     timeout: 8
+    base_url: https://cn.bing.com
+    allow_redirects: true
   - name: bing images
     disabled: false
     timeout: 8
+    base_url: https://cn.bing.com
+    allow_redirects: true
+  # bing news/videos 用 cn.bing.com 的 ajax 接口不稳定 (0 结果), 暂时禁用
   - name: bing news
-    disabled: false
-    timeout: 8
+    disabled: true
   - name: bing videos
-    disabled: false
-    timeout: 8
+    disabled: true
+  # 百度/搜狗/夸克/360: 均触发验证码或结果质量差, 禁用
   - name: baidu
-    disabled: false
-    timeout: 8
+    disabled: true
   - name: sogou
-    disabled: false
-    timeout: 8
+    disabled: true
   - name: quark
-    disabled: false
-    timeout: 8
+    disabled: true
   - name: 360search
-    disabled: false
-    timeout: 8
+    disabled: true
+  # wikipedia/startpage: 国内不可达, 禁用避免每次搜索等超时
   - name: wikipedia
-    disabled: false
-    timeout: 10
-    # wikipedia 国内有时可达 (cn.wikipedia.org), 保留但放宽超时
+    disabled: true
+  - name: startpage
+    disabled: true
 
-  # === 国内不可达引擎 (禁用, 避免每次搜索等超时拖慢) ===
+  # === 国外不可达引擎 (禁用, 避免每次搜索等超时拖慢) ===
   - name: google
     disabled: true
   - name: google images

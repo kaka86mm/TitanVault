@@ -21,6 +21,7 @@ export const svgIcons = {
   homepage: { color: "#64748B", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>` },
   api: { color: "#6366F1", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 18 23 12 17 6"/><polyline points="7 6 1 12 7 18"/><line x1="14" y1="4" x2="10" y2="20"/></svg>` },
   research: { color: "#3b9eff", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>` },
+  metacube: { color: "#FF6B35", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7v10l10 5 10-5V7z"/><path d="M2 7l10 5 10-5M12 22V12"/></svg>` },
 };
 
 export const services = [
@@ -33,6 +34,7 @@ export const services = [
   { name: 'Open Notebook', icon: 'notebook', desc: '知识库',                   port: 8088,  url: '/go/notebook', status: 'up', cat: 'App' },
   { name: 'uptime-kuma', icon: 'kuma',      desc: '服务监控+告警',              port: 3001,  url: '/go/kuma',   status: 'up', cat: 'Ops' },
   { name: 'Glances',     icon: 'glances',   desc: '系统监控',                   port: 61208, url: '/go/glances', status: 'up', cat: 'Ops' },
+  { name: 'MetacubeXd',  icon: 'metacube',  desc: 'mihomo 代理管理面板',         port: 0,     url: '/metacube/', status: 'up', cat: 'Ops' },
   { name: 'Hermes',      icon: 'hermes',    desc: 'AI agent (Nous)',            port: 9119,  url: '/go/hermes', status: 'up', cat: 'Agent' },
   { name: 'OpenSquilla', icon: 'opensquilla', desc: 'token 高效 agent',        port: 18791, url: '/go/opensquilla', status: 'up', cat: 'Agent' },
   { name: 'Open Design', icon: 'opendesign', desc: '设计工具',                  port: 7456,  url: '/go/design', status: 'up', cat: 'Agent' },
