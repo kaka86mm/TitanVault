@@ -30,8 +30,9 @@ services:
       - ../config/frp/frpc.toml:/etc/frp/frpc.toml:ro
     logging: *id001
 
-  # MetacubeXd — mihomo 官方面板 (纯前端, 连 mihomo 的 9090 API)。
-  # 走 mozin bridge 网络, 用 host-gateway:9090 访问 host 模式的 mihomo API。
+  # MetacubeXd — mihomo 官方面板 (Nuxt/Nitro server, 连 mihomo 的 9090 API)。
+  # 走 mozin bridge 网络。NUXT_APP_BASE_URL 让 Nuxt 以 /metacube/ 子路径运行,
+  # 配合 Caddy handle (不剥前缀) 反代。DEFAULT_BACKEND_URL 让面板默认连 mihomo API。
   metacubexd:
     image: ghcr.io/metacubex/metacubexd:latest
     profiles: [network]
@@ -39,6 +40,9 @@ services:
     networks: [mozin]
     extra_hosts:
       - "host-gateway:host-gateway"
+    environment:
+      - NUXT_APP_BASE_URL=/metacube/
+      - DEFAULT_BACKEND_URL=${MIHOMO_BACKEND_URL:-}
     logging: *id001
 
 networks:

@@ -47,11 +47,14 @@
 		reverse_proxy deep-research:8099
 	}
 
-	# MetacubeXd — mihomo 代理管理面板 (反代到 bridge 容器, 容器内 nginx:80)
+	# MetacubeXd — mihomo 代理管理面板 (Nuxt/Nitro server)
+	# 用 handle (不剥前缀): Nitro 设了 NUXT_APP_BASE_URL=/metacube/, 需保留前缀匹配路由。
 	# 面板连接 mihomo API 时, 后端地址填: http://<host-ip>:9090 + secret
-	handle_path /metacube/* {
+	handle /metacube/* {
 		reverse_proxy metacubexd:80
 	}
+	# /metacube (无尾斜杠) → /metacube/
+	redir /metacube /metacube/ permanent
 
 	# Hermes gateway API — ops agent (:8642, 运维 agent)
 	# TitanVault AI 助手专用: 管理 docker/systemctl/故障排查, approvals=off
