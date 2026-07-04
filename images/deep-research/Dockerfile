@@ -22,6 +22,6 @@ ENV SEARXNG_URL=http://host-gateway:8087
 ENV LITELLM_URL=http://host-gateway:4000/v1
 ENV ON_BASE_URL=http://host-gateway:5055
 ENV REPORTS_DIR=/data/quest-reports
-ENV MAX_TURNS=5
+ENV MAX_TURNS=6
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8099"]

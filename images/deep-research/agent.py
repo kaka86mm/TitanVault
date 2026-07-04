@@ -72,12 +72,12 @@ Do NOT repeat searches you've already done (listed in existing knowledge).
 When done, output the COMPLETE updated report in markdown.
 
 ## Available Tools
-- search: {"name": "search", "arguments": {"query": ["query"]}}
-- visit: {"name": "visit", "arguments": {"url": ["url"], "goal": "..."}}
+- search: {{"name": "search", "arguments": {{"query": ["query"]}}}}
+- visit: {{"name": "visit", "arguments": {{"url": ["url"], "goal": "..."}}}}
 
 To call a tool:
 <tool_call>
-{"name": "search", "arguments": {"query": ["new query"]}}
+{{"name": "search", "arguments": {{"query": ["new query"]}}}}
 </tool_call>
 
 When you have enough new info, output the complete updated report."""
@@ -181,7 +181,7 @@ class ResearchAgent:
         endpoint: str = "http://host-gateway:8093/v1",
         api_key: str = "EMPTY",
         model: str = "QUEST-9B",
-        max_turns: int = 5,
+        max_turns: int = 6,
     ):
         self.client = OpenAI(api_key=api_key, base_url=endpoint)
         self.model = model
@@ -234,7 +234,7 @@ class ResearchAgent:
                 resp = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    max_tokens=4096,
+                    max_tokens=8192,
                     temperature=0.7,
                 )
                 reply = resp.choices[0].message.content or ""
@@ -249,13 +249,19 @@ class ResearchAgent:
             if not tool_call:
                 # 没工具调用 = 最终报告
                 report = self._extract_report(reply)
+                if not report or len(report) < 20:
+                    report = self._build_fallback_report(question, context)
                 context.add_version(report)
                 emit({"type": "report", "version": context.current_version,
                       "content": report, "changes": "initial" if not is_iteration else "updated"})
                 return report
 
             name, args = tool_call
-            result = self._execute_tool(name, args, skip_queries, context, emit)
+            try:
+                result = self._execute_tool(name, args, skip_queries, context, emit)
+            except Exception as e:
+                emit({"type": "error", "message": f"Tool {name} error: {e}"})
+                result = f"[Tool {name} error: {e}]"
 
             # 回填工具结果
             messages.append({"role": "user",
@@ -264,20 +270,70 @@ class ResearchAgent:
         # 超过最大轮数, 强制总结
         emit({"type": "thinking", "turn": self.max_turns, "max_turns": self.max_turns,
               "forced": True})
-        messages.append({"role": "user",
-                         "content": "You have done enough research. Write your final report now."})
+
+        # 强制总结: 用精简上下文 (不传完整对话历史, 只传已收集的知识)
+        # 避免 QUEST-9B 因上下文过大而返回空
+        summary_prompt = self._build_summary_prompt(question, context, is_iteration)
+        summary_messages = [
+            {"role": "system", "content": "You are a research assistant. Based on the gathered information below, write a comprehensive research report in markdown with citations. Write the report directly, do not call any tools."},
+            {"role": "user", "content": summary_prompt},
+        ]
         try:
             resp = self.client.chat.completions.create(
-                model=self.model, messages=messages, max_tokens=4096, temperature=0.7,
+                model=self.model, messages=summary_messages,
+                max_tokens=4096, temperature=0.7,
             )
             report = self._extract_report(resp.choices[0].message.content or "")
         except Exception as e:
-            report = f"# Research Incomplete\n\nReached max turns. Last error: {e}"
+            report = ""
+
+        # 如果强制总结也空, 用已收集的知识拼一个基础报告
+        if not report or len(report) < 50:
+            report = self._build_fallback_report(question, context)
 
         context.add_version(report, changes="forced summary")
         emit({"type": "report", "version": context.current_version,
               "content": report, "changes": "forced"})
         return report
+
+    def _build_summary_prompt(self, question: str, context: ResearchContext,
+                              is_iteration: bool) -> str:
+        """构建强制总结的精简 prompt (只含知识, 不含对话历史)。"""
+        parts = [f"Research Question: {question}\n"]
+
+        if is_iteration and context.latest_report:
+            parts.append(f"Previous Report:\n{context.latest_report[:3000]}\n")
+
+        parts.append("Information Gathered:")
+        for q in context.searched_queries:
+            parts.append(f"- Searched: {q}")
+        for url, snippet in list(context.visited_urls.items())[:8]:
+            parts.append(f"- {url}:\n  {snippet[:500]}")
+
+        parts.append("\nWrite a comprehensive report answering the question. "
+                      "Use markdown with headers and [source: URL] citations.")
+        return "\n".join(parts)
+
+    def _build_fallback_report(self, question: str, context: ResearchContext) -> str:
+        """LLM 总结失败时的兜底: 用已收集的知识拼报告。"""
+        lines = [f"# Research: {question}\n"]
+        lines.append(f"> 自动生成 (基于 {len(context.searched_queries)} 次搜索, "
+                      f"{len(context.visited_urls)} 个页面)\n")
+
+        if context.visited_urls:
+            lines.append("## Key Findings\n")
+            for url, snippet in list(context.visited_urls.items())[:8]:
+                lines.append(f"### {url}\n")
+                lines.append(f"{snippet[:800]}\n")
+                lines.append(f"[source: {url}]\n")
+        else:
+            lines.append("## Search Results\n")
+            lines.append("The research agent searched but could not extract "
+                          "detailed page content. Key search queries:\n")
+            for q in context.searched_queries:
+                lines.append(f"- {q}")
+
+        return "\n".join(lines)
 
     def _parse_tool_call(self, text: str):
         """从 LLM 输出解析 <tool_call>{...}</tool_call>。"""
@@ -286,8 +342,21 @@ class ResearchAgent:
             return None
         try:
             call = json.loads(matches[-1].strip())
-            return call.get("name"), call.get("arguments", {})
-        except json.JSONDecodeError:
+            if not isinstance(call, dict):
+                return None
+            name = call.get("name")
+            args = call.get("arguments", {})
+            if not name:
+                return None
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+            if not isinstance(args, dict):
+                args = {}
+            return name, args
+        except (json.JSONDecodeError, AttributeError, TypeError):
             return None
 
     def _execute_tool(self, name: str, args, skip_queries, context, emit) -> str:
@@ -343,6 +412,21 @@ class ResearchAgent:
         return "\n".join(lines)
 
     def _extract_report(self, text: str) -> str:
-        """去掉残留 tool_call 标记, 返回干净报告。"""
-        text = re.sub(r"<tool_call>.*?</tool_call>", "", text, flags=re.DOTALL).strip()
+        """去掉残留 tool_call 标记和非内容行, 返回干净报告。"""
+        # 去掉闭合的 <tool_call>...</tool_call>
+        text = re.sub(r"<tool_call>.*?</tool_call>", "", text, flags=re.DOTALL)
+        # 去掉未闭合的 <tool_call> (到行尾或文件尾)
+        text = re.sub(r"<tool_call>.*", "", text, flags=re.DOTALL)
+        # 去掉 [visit] / [search] 等伪 tool 标记块
+        text = re.sub(r"\[(?:visit|search|memory)\][^\n]*\n(?:[^\n]*\n){0,5}", "", text)
+        # 去掉 <think> 块
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        # 去掉残留的 thinking 开头
+        text = re.sub(r"^<think>.*$", "", text, flags=re.MULTILINE)
+        # 找到第一个 markdown 标题 (#) 作为报告起点
+        m = re.search(r"^(#{1,3}\s+.+)$", text, re.MULTILINE)
+        if m:
+            text = text[m.start():]
+        # 清理多余空行
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
         return text

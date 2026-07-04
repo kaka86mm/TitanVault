@@ -122,7 +122,7 @@ services:
       LITELLM_KEY: "${LITELLM_MASTER_KEY}"
       ON_BASE_URL: "http://host-gateway:5055"
       REPORTS_DIR: "/data/quest-reports"
-      MAX_TURNS: "5"
+      MAX_TURNS: "6"
     volumes:
       # 报告 + session 持久化
       - ${DATA_DIR:-/data}/quest-reports:/data/quest-reports

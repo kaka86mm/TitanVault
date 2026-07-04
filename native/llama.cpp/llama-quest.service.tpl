@@ -12,7 +12,8 @@ ExecStart=/opt/llama.cpp/llama-server \
     --host 0.0.0.0 \
     --port 8093 \
     -ngl 99 \
-    -c 32768 \
+    -c 65536 \
+    -np 2 \
     -t 8 \
     --no-mmap
 Restart=on-failure
