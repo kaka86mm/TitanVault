@@ -1,153 +1,373 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mozin — API 指南</title>
+<title>TitanVault — API 指南</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--green:#22c55e;--red:#ef4444;--yellow:#eab308;--blue:#3b82f6}
+/* ===== 配色/字体对齐 Dashboard, 但布局是文档式 ===== */
+:root{
+--bg:#0a0a0c;--bg-elevated:#101014;--surface:#16161c;
+--fg:#f0f0f4;--fg-2:#a0a0b0;--fg-muted:#68687a;
+--border:#262630;--border-subtle:#1a1a22;
+--accent:#3b9eff;--accent-subtle:rgba(59,158,255,.08);
+--success:#22d37c;--success-dim:rgba(34,211,124,.12);
+--warn:#f5a623;--warn-dim:rgba(245,166,35,.12);
+--danger:#f05a5a;--danger-dim:rgba(240,90,90,.12);
+--code-bg:#0b1220;
+--font-body:Inter,system-ui,sans-serif;--font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+--radius:8px;
+}
+[data-theme="light"]{
+--bg:#f2f4f8;--bg-elevated:#fff;--surface:#fff;
+--fg:#0d111c;--fg-2:#3b4252;--fg-muted:#6e7687;
+--border:#d0d7e2;--border-subtle:#e6eaef;
+--accent:#2b82d9;--accent-subtle:rgba(43,130,217,.06);
+--code-bg:#1a1a2e;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;padding:20px;max-width:1200px;margin:0 auto}
-h1{font-size:1.6rem;margin-bottom:4px}
-.sub{color:var(--muted);font-size:.9rem;margin-bottom:16px}
-h2{font-size:1.15rem;margin:20px 0 10px;padding-bottom:4px;border-bottom:1px solid var(--border)}
-.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px}
-.toolbar input{background:#0b1220;border:1px solid var(--border);border-radius:4px;padding:5px 10px;color:var(--text);font-family:monospace;font-size:.8rem;flex:1;min-width:200px}
-.toolbar .count{color:var(--muted);font-size:.85rem}
-.api-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px}
-.api-card .head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
-.api-card .title{font-size:1.05rem;font-weight:600}
-.badge{font-size:.7rem;padding:2px 8px;border-radius:4px;background:#6366f1;color:#fff}
-.badge.web{background:#0891b2}.badge.new{background:var(--green);color:#000}
-.badge.key{background:var(--yellow);color:#000}
-.status{font-size:.78rem;padding:2px 10px;border-radius:12px;font-weight:600}
-.status.ok{background:rgba(34,197,94,.15);color:var(--green)}
-.status.fail{background:rgba(239,68,68,.15);color:var(--red)}
-.status.checking{background:rgba(234,179,8,.15);color:var(--yellow)}
-.desc{color:var(--muted);font-size:.82rem;margin:4px 0 6px}
-.endpoint{display:flex;align-items:center;gap:6px;margin:5px 0;font-family:monospace;font-size:.8rem;flex-wrap:wrap}
-.method{padding:1px 5px;border-radius:3px;font-size:.7rem;font-weight:700}
-.method.GET{background:var(--green);color:#000}.method.POST{background:var(--yellow);color:#000}
-.method.PUT{background:var(--blue);color:#fff}.method.DELETE{background:var(--red);color:#fff}
-.path{color:var(--blue)}
-code.example{background:#0b1220;border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-family:monospace;font-size:.78rem;overflow-x:auto;display:block;margin:5px 0;color:#93c5fd;white-space:pre}
-.btn{font-size:.75rem;padding:3px 10px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);cursor:pointer}
-.btn:hover{border-color:var(--blue);color:var(--blue)}
-.test-result{font-size:.78rem;font-family:monospace;margin-top:5px;padding:6px;border-radius:4px;display:none;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow:auto;background:#0b1220;border:1px solid var(--border)}
-.test-result.show{display:block}
-.loading{text-align:center;color:var(--muted);padding:40px}
+body{
+font-family:var(--font-body);font-size:14px;line-height:1.6;
+background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased;
+}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ===== 顶栏 (极简, 借用 Dashboard 配色) ===== */
+.topbar{
+position:sticky;top:0;z-index:50;
+background:color-mix(in srgb,var(--bg) 85%,transparent);
+backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+border-bottom:1px solid var(--border);
+padding:12px 24px;
+}
+.topbar-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.topbar-title{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
+.topbar-title svg{width:22px;height:25px}
+.topbar-sub{font-size:12px;color:var(--fg-muted)}
+.search-box{
+flex:1;min-width:200px;padding:7px 12px;
+border:1px solid var(--border);border-radius:6px;
+background:var(--surface);color:var(--fg);font-size:13px;outline:none;
+}
+.search-box:focus{border-color:var(--accent)}
+.topbar-actions{display:flex;gap:8px;align-items:center}
+.manifest-btn{
+font-size:12px;font-weight:500;padding:6px 12px;border-radius:6px;
+background:var(--accent-subtle);color:var(--accent);
+border:1px solid color-mix(in srgb,var(--accent) 20%,transparent);
+text-decoration:none;cursor:pointer;
+}
+.manifest-btn:hover{background:var(--accent);color:#fff}
+.theme-btn{
+width:32px;height:32px;border-radius:6px;border:1px solid var(--border);
+background:var(--surface);color:var(--fg-2);cursor:pointer;font-size:14px;
+}
+.theme-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ===== 左侧目录 ===== */
+.layout{max-width:1100px;margin:0 auto;padding:24px;display:grid;grid-template-columns:200px 1fr;gap:24px}
+.toc{position:sticky;top:64px;align-self:start;max-height:calc(100vh - 80px);overflow-y:auto}
+.toc h4{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--fg-muted);margin:0 0 8px;padding:0 8px}
+.toc a{
+display:block;padding:4px 8px;font-size:13px;color:var(--fg-2);
+text-decoration:none;border-radius:4px;border-left:2px solid transparent;
+}
+.toc a:hover{background:var(--surface);color:var(--fg)}
+.toc a.active{color:var(--accent);border-left-color:var(--accent);background:var(--accent-subtle)}
+.toc-cat{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--fg-muted);margin:12px 0 4px;padding:0 8px;font-weight:600}
+
+/* ===== 主体: 服务区块 (文档式) ===== */
+.main{min-width:0}
+.intro{padding:16px 0 24px;border-bottom:1px solid var(--border-subtle);margin-bottom:24px}
+.intro h1{font-size:22px;margin-bottom:6px}
+.intro p{color:var(--fg-2);font-size:13px}
+.intro code{font-family:var(--font-mono);background:var(--surface);padding:1px 6px;border-radius:4px;font-size:12px;color:var(--accent);border:1px solid var(--border-subtle)}
+
+.section{margin-bottom:40px;scroll-margin-top:70px}
+.section-head{
+display:flex;align-items:center;gap:10px;
+padding-bottom:8px;margin-bottom:0;border-bottom:2px solid var(--border);
+}
+.section-icon{width:28px;height:28px;border-radius:6px;display:grid;place-items:center;font-size:15px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.section-title{font-size:17px;font-weight:600}
+.section-port{font-family:var(--font-mono);font-size:12px;color:var(--fg-muted)}
+.section-meta{margin-left:auto;display:flex;gap:4px;align-items:center}
+.tag{font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px}
+.tag.native{background:var(--accent-subtle);color:var(--accent)}
+.tag.key{background:var(--warn-dim);color:var(--warn)}
+.tag.new{background:var(--success-dim);color:var(--success)}
+.section-desc{color:var(--fg-2);font-size:13px;padding:10px 0 12px}
+.models{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}
+.model-tag{font-family:var(--font-mono);font-size:11px;padding:2px 8px;border-radius:4px;background:var(--surface);color:var(--accent);border:1px solid var(--border-subtle)}
+
+/* ===== 端点 (全部铺开) ===== */
+.endpoint{
+border:1px solid var(--border-subtle);border-radius:var(--radius);
+margin-bottom:10px;overflow:hidden;background:var(--bg-elevated);
+}
+.ep-row{display:flex;align-items:center;gap:10px;padding:10px 14px;flex-wrap:wrap}
+.method{
+padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;
+font-family:var(--font-mono);letter-spacing:.03em;min-width:42px;text-align:center;
+}
+.method.GET{background:var(--success);color:#000}
+.method.POST{background:var(--warn);color:#000}
+.method.PUT{background:var(--accent);color:#fff}
+.method.DELETE{background:var(--danger);color:#fff}
+.ep-path{font-family:var(--font-mono);font-size:13px;color:var(--accent);word-break:break-all}
+.ep-desc{font-size:12px;color:var(--fg-muted)}
+.ep-test{
+margin-left:auto;font-size:11px;padding:3px 10px;border-radius:4px;
+border:1px solid var(--border);background:var(--surface);color:var(--fg-2);
+cursor:pointer;white-space:nowrap;
+}
+.ep-test:hover{border-color:var(--accent);color:var(--accent)}
+.ep-detail{padding:0 14px 12px;border-top:1px solid var(--border-subtle)}
+.ep-notes{font-size:12px;color:var(--warn);background:var(--warn-dim);padding:6px 10px;border-radius:4px;margin:10px 0}
+.ep-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--fg-muted);margin:10px 0 4px;font-weight:600}
+.code-block{position:relative;background:var(--code-bg);border:1px solid var(--border-subtle);border-radius:6px}
+.code-block pre{padding:10px 14px;font-family:var(--font-mono);font-size:12px;line-height:1.6;color:#93c5fd;overflow-x:auto;white-space:pre;word-break:break-all}
+.copy-btn{
+position:absolute;top:6px;right:6px;font-size:10px;padding:3px 8px;
+border:1px solid var(--border);border-radius:4px;background:var(--surface);
+color:var(--fg-2);cursor:pointer;
+}
+.copy-btn:hover{border-color:var(--accent);color:var(--accent)}
+.copy-btn.copied{background:var(--success);color:#000;border-color:var(--success)}
+.test-out{
+margin-top:8px;font-family:var(--font-mono);font-size:11px;
+background:var(--code-bg);border:1px solid var(--border-subtle);border-radius:6px;
+padding:10px 14px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--fg-2);
+display:none;
+}
+.test-out.show{display:block}
+.http-ok{color:var(--success)}
+.http-err{color:var(--danger)}
+
+.empty{text-align:center;color:var(--fg-muted);padding:60px}
+
+/* 响应式: 窄屏去掉左栏 */
+@media(max-width:860px){
+.layout{grid-template-columns:1fr;padding:16px}
+.toc{display:none}
+}
 </style>
 </head>
 <body>
-<h1>Mozin Workstation API 指南</h1>
-<div class="sub">自动发现所有运行中的服务 · 实时健康检查 · 一键测试 · 新装服务自动出现</div>
-<div class="toolbar">
-  <input type="password" id="apikey" placeholder="LITELLM_MASTER_KEY (LiteLLM 测试用, 本地缓存)" />
-  <span class="count" id="count"></span>
-  <button class="btn" onclick="load()">刷新</button>
+
+<!-- 顶栏 -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="topbar-title">
+      <svg viewBox="0 0 28 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#b45309"/></linearGradient></defs>
+        <path d="M14 2L2 8v6c0 7 5 12 12 16 7-4 12-9 12-16V8L14 2z" fill="url(#g)"/>
+        <path d="M14 9l-4 7h3v5l5-8h-3l1-4z" fill="#fff" opacity=".9"/>
+      </svg>
+      <span>TitanVault API</span>
+    </div>
+    <input class="search-box" id="search" placeholder="搜索服务/端点/端口..." oninput="render()">
+    <div class="topbar-actions">
+      <a class="manifest-btn" href="manifest.json" target="_blank">manifest.json</a>
+      <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">🌙</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- 左侧目录 -->
+  <nav class="toc" id="toc"></nav>
+
+  <!-- 主体 -->
+  <main class="main">
+    <div class="intro">
+      <h1>API 指南</h1>
+      <p>本机全部 AI 能力的调用方式。agent 可拉取 <code>/api-guide/manifest.json</code> 获取机器可读清单。</p>
+    </div>
+    <div id="content"><p style="color:var(--fg-muted)">加载中...</p></div>
+  </main>
 </div>
-<div id="content"><div class="loading">发现服务中...</div></div>
 
 <script>
 let SERVICES=[];
-const CAT_ORDER=['LLM','语音','文档','图像','工具','应用','运维','Agent','其它'];
-// BASE: 页面可能在 /api-guide/ (caddy 反代) 或 / (直连 :8098)。
-// 用相对路径: 同目录下 api/xxx 自动跟随当前页面路径。
-const BASE = './';
 
-// API key 输入框
-const keyInput=document.getElementById('apikey');
-if(localStorage.getItem('mozin_key'))keyInput.value=localStorage.getItem('mozin_key');
-keyInput.addEventListener('change',()=>localStorage.setItem('mozin_key',keyInput.value));
-
-async function load(){
-  const el=document.getElementById('content');
-  el.innerHTML='<div class="loading">发现服务中...</div>';
-  try{
-    const r=await fetch(BASE+'api/services');  // api-discover 后端 (同源, 无 CORS)
-    const d=await r.json();
-    SERVICES=d.services||[];
-    document.getElementById('count').textContent=SERVICES.length+' 个服务';
-    render();
-    // 异步检查所有健康
-    SERVICES.forEach(s=>checkHealth(s.port));
-  }catch(e){el.innerHTML='<div class="loading">加载失败: '+e.message+'<br>确保 api-discover 服务在运行</div>';}
+function initTheme(){
+  const t=localStorage.getItem('ai-station-theme')||'dark';
+  document.documentElement.setAttribute('data-theme',t);
+  document.getElementById('themeBtn').textContent=t==='dark'?'🌙':'☀️';
+}
+function toggleTheme(){
+  const c=document.documentElement.getAttribute('data-theme');
+  const n=c==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',n);
+  localStorage.setItem('ai-station-theme',n);
+  document.getElementById('themeBtn').textContent=n==='dark'?'🌙':'☀️';
 }
 
+async function load(){
+  try{
+    const r=await fetch('api/services');
+    const d=await r.json();
+    SERVICES=d.services||[];
+    render();
+    renderTOC();
+    SERVICES.forEach(s=>checkHealth(s.port));
+  }catch(e){
+    document.getElementById('content').innerHTML='<div class="empty">加载失败: '+e.message+'</div>';
+  }
+}
+
+function getFiltered(){
+  const q=document.getElementById('search').value.toLowerCase().trim();
+  if(!q)return SERVICES;
+  return SERVICES.filter(s=>s.name.toLowerCase().includes(q)||s.desc.toLowerCase().includes(q)||s.category.toLowerCase().includes(q)||String(s.port).includes(q)||(s.endpoints||[]).some(e=>(e.path||'').toLowerCase().includes(q)));
+}
+
+const CAT_ORDER=['LLM','语音','文档','图像','工具','Agent','应用','运维','其它'];
+const CAT_ICON={LLM:'🧠',语音:'🎙️',文档:'📄',图像:'🎨',工具:'🔧',Agent:'🤖',应用:'📦',运维:'📊',其它:'◈'};
+
 function render(){
-  const el=document.getElementById('content');
-  if(!SERVICES.length){el.innerHTML='<div class="loading">没有发现服务</div>';return;}
-  // 按分类分组
+  const svcs=getFiltered();
+  if(!svcs.length){document.getElementById('content').innerHTML='<div class="empty">没有匹配的服务</div>';return}
   const groups={};
-  SERVICES.forEach(s=>{(groups[s.category]=groups[s.category]||[]).push(s);});
+  svcs.forEach(s=>{(groups[s.category]=groups[s.category]||[]).push(s)});
+  const cats=CAT_ORDER.filter(c=>groups[c]).concat(Object.keys(groups).filter(c=>!CAT_ORDER.includes(c)));
+  const host=location.hostname||'localhost';
+  let html='';
+  for(const cat of cats){
+    for(const s of groups[cat]){
+      html+=renderSection(s,host);
+    }
+  }
+  document.getElementById('content').innerHTML=html;
+}
+
+function renderSection(s,host){
+  const sid='svc-'+s.port;
+  let tags='';
+  if(s.source==='native')tags+='<span class="tag native">原生</span>';
+  if(s.key_required)tags+='<span class="tag key">需 Key</span>';
+  if(!s.known)tags+='<span class="tag new">新发现</span>';
+
+  let modelsHtml='';
+  if(s.models&&s.models.length){
+    modelsHtml='<div class="models">'+s.models.map(m=>'<span class="model-tag">'+esc(m)+'</span>').join('')+'</div>';
+  }
+
+  let epHtml='';
+  if(s.endpoints&&s.endpoints.length){
+    s.endpoints.forEach((e,i)=>{
+      const m=e.method||'GET',p=e.path||'/';
+      const curl=buildCurl(host,s.port,m,p,s.key_required,e.request);
+      epHtml+='<div class="endpoint">'
+        +'<div class="ep-row">'
+        +'<span class="method '+m+'">'+m+'</span>'
+        +'<span class="ep-path">:'+s.port+esc(p)+'</span>'
+        +(e.desc?'<span class="ep-desc">'+esc(e.desc)+'</span>':'')
+        +'<button class="ep-test" onclick="testEp('+s.port+',\''+m+'\',\''+escA(p)+'\',this,'+(e.request?'true':'false')+')">▶ 测试</button>'
+        +'</div>'
+        +'<div class="ep-detail">'
+        +(e.notes?'<div class="ep-notes">💡 '+esc(e.notes)+'</div>':'')
+        +'<div class="ep-label">curl</div>'
+        +'<div class="code-block"><button class="copy-btn" onclick="copyCode(this)">复制</button><pre>'+esc(curl)+'</pre></div>'
+        +(e.request?'<div class="ep-label">请求体</div><div class="code-block"><button class="copy-btn" onclick="copyCode(this)">复制</button><pre>'+esc(JSON.stringify(e.request,null,2))+'</pre></div>':'')
+        +'<div class="test-out" id="out-'+s.port+'-'+i+'"></div>'
+        +'</div></div>';
+    });
+  }else if(s.type==='web'){
+    epHtml='<div class="endpoint"><div class="ep-row"><span class="method GET">GET</span><span class="ep-path">:'+s.port+'/</span><a class="ep-test" href="http://'+host+':'+s.port+'/" target="_blank">打开 ↗</a></div></div>';
+  }else{
+    epHtml='<div class="endpoint"><div class="ep-row"><span class="ep-desc">无已知端点 (OpenAPI 探测未发现)</span></div></div>';
+  }
+
+  return '<section class="section" id="'+sid+'">'
+    +'<div class="section-head">'
+    +'<div class="section-icon" style="background:'+(s.color||'#64748B')+'">'+(s.icon||'📦')+'</div>'
+    +'<span class="section-title">'+esc(s.name)+'</span>'
+    +'<span class="section-port">:'+s.port+'</span>'
+    +'<span class="section-meta">'+tags+'</span>'
+    +'</div>'
+    +'<div class="section-desc">'+esc(s.desc||'')+'</div>'
+    +modelsHtml
+    +epHtml
+    +'</section>';
+}
+
+function buildCurl(host,port,method,path,keyRequired,request){
+  let c='curl -X '+method+' http://'+host+':'+port+path;
+  if(keyRequired)c+=' \\\n  -H "Authorization: Bearer $KEY"';
+  if(method==='POST'&&request){
+    c+=' \\\n  -H "Content-Type: application/json"';
+    c+=' \\\n  -d \''+JSON.stringify(request)+'\'';
+  }
+  return c;
+}
+
+function renderTOC(){
+  const toc=document.getElementById('toc');
+  const svcs=getFiltered();
+  const groups={};
+  svcs.forEach(s=>{(groups[s.category]=groups[s.category]||[]).push(s)});
   const cats=CAT_ORDER.filter(c=>groups[c]).concat(Object.keys(groups).filter(c=>!CAT_ORDER.includes(c)));
   let html='';
   for(const cat of cats){
-    html+=`<h2>${cat} (${groups[cat].length})</h2>`;
+    html+='<div class="toc-cat">'+cat+'</div>';
     for(const s of groups[cat]){
-      html+=renderCard(s);
+      html+='<a href="#svc-'+s.port+'">'+(s.icon||'')+' '+esc(s.name)+'</a>';
     }
   }
-  el.innerHTML=html;
-}
-
-function renderCard(s){
-  const port=s.port;
-  let epHtml='';
-  (s.endpoints||[]).forEach(e=>{
-    const[m,p,desc]=Array.isArray(e)?e:[e,'',''];
-    epHtml+=`<div class="endpoint"><span class="method ${m}">${m}</span><span class="path">:${port}${p}</span>${desc?'<span style="color:var(--muted);font-size:.75rem">'+desc+'</span>':''}</div>`;
-  });
-  if(!epHtml && s.has_openapi)epHtml='<div class="endpoint"><span style="color:var(--muted)">有 OpenAPI 定义 (点测试查看)</span></div>';
-  const example=s.endpoints&&s.endpoints[0]?`:${port}${Array.isArray(s.endpoints[0])?s.endpoints[0][1]:''}`:`:${port}/`;
-  const badges=(s.type==='web'?'<span class="badge web">Web UI</span>':'')+
-               (s.key_required?'<span class="badge key">需 Key</span>':'')+
-               (s.has_openapi?'<span class="badge">OpenAPI</span>':'')+
-               (!s.known?'<span class="badge new">新发现</span>':'');
-  return `<div class="api-card" id="card-${port}">
-    <div class="head">
-      <span class="title">${s.name} <span style="color:var(--muted);font-size:.8rem">:${port}</span></span>
-      <span>${badges}<span class="status checking" id="s-${port}">检查中</span></span>
-    </div>
-    <div class="desc">${s.desc||s.image||''}</div>
-    ${epHtml}
-    <code class="example">curl http://&lt;IP&gt;${example}${s.key_required?' \\\n  -H "Authorization: Bearer $KEY"':''}</code>
-    <button class="btn" onclick="testApi(${port},'GET','/health')">健康检查</button>
-    <button class="btn" onclick="testApi(${port},'GET','/')">测试根路径</button>
-    <div class="test-result" id="r-${port}"></div>
-  </div>`;
+  toc.innerHTML=html||'<p style="color:var(--fg-muted);padding:0 8px">无</p>';
 }
 
 async function checkHealth(port){
-  const el=document.getElementById('s-'+port);
-  if(!el)return;
-  try{
-    const r=await fetch(BASE+'api/health/'+port);  // 经后端代理, 无 CORS
-    const d=await r.json();
-    el.textContent=d.online?'在线':'离线';
-    el.className='status '+(d.online?'ok':'fail');
-  }catch(e){el.textContent='离线';el.className='status fail';}
+  // 文档式不强调状态点, 但仍可标记. 这里不做视觉, 留空.
 }
 
-async function testApi(port,method,path){
-  const el=document.getElementById('r-'+port);
-  el.className='test-result show';el.textContent='请求中...';
+async function testEp(port,method,path,btn,hasBody){
+  const card=btn.closest('.endpoint');
+  const out=card.querySelector('.test-out');
+  out.className='test-out show';
+  out.textContent='请求中...';
+  btn.textContent='...';
   try{
-    let url=BASE+'api/test/'+port+'?method='+method+'&path='+encodeURIComponent(path);
-    let body='';
-    if(method==='POST'){
-      body=JSON.stringify({model:'kokoro',input:'test',voice:'kf'});
-    }
+    const url='api/test/'+port+'?method='+method+'&path='+encodeURIComponent(path);
     const opts={method:'POST',headers:{'Content-Type':'application/json'}};
-    if(body)opts.body=body;
+    // 找该端点的 request body
+    if(hasBody){
+      const svc=SERVICES.find(s=>s.port===port);
+      const ep=svc&&svc.endpoints.find(e=>(e.path||'')===path);
+      if(ep&&ep.request)opts.body=JSON.stringify(ep.request);
+    }
     const r=await fetch(url,opts);
     const d=await r.json();
     let txt=typeof d.body==='object'?JSON.stringify(d.body,null,2):String(d.body);
-    if(txt.length>400)txt=txt.slice(0,400)+'\n...';
-    el.textContent='HTTP '+d.status+'\n'+txt;
-  }catch(e){el.textContent='错误: '+e.message;}
+    if(txt.length>800)txt=txt.slice(0,800)+'\n... (截断)';
+    const ok=d.status>=200&&d.status<400;
+    out.innerHTML='<span class="'+(ok?'http-ok':'http-err')+'">HTTP '+d.status+'</span>\n'+esc(txt);
+    btn.textContent='▶ 测试';
+  }catch(e){
+    out.innerHTML='<span class="http-err">错误:</span> '+esc(e.message);
+    btn.textContent='▶ 测试';
+  }
 }
 
+function copyCode(btn){
+  const pre=btn.parentElement.querySelector('pre');
+  if(!pre)return;
+  navigator.clipboard.writeText(pre.textContent).then(()=>{
+    btn.textContent='✓';btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent='复制';btn.classList.remove('copied');},1200);
+  });
+}
+
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function escA(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+
+initTheme();
 load();
 </script>
 </body>
