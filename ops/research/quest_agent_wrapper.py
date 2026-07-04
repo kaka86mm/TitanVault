@@ -158,10 +158,7 @@ class MemoryTool(BaseTool):
     """精简 memory 工具: 压缩长对话上下文。"""
     name = "memory"
     description = "Condense the conversation memory to free up context. Call when the conversation is getting long."
-    parameters = {
-        "type": "object",
-        "properties": {},
-    }
+    parameters = [{"name": "summary", "type": "string", "description": "Optional summary to remember"}]
 
     def call(self, params, **kwargs):
         return "[memory] Context has been noted. Continue with your research."
