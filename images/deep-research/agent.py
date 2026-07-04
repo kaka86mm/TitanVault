@@ -404,24 +404,47 @@ class ResearchAgent:
         return report + "\n".join(summary_lines)
 
     def _extract_claims(self, report: str) -> list:
-        """从报告抽取需要验证的事实声明 (含数字/日期/百分比的句子)。"""
+        """从报告抽取需要验证的事实声明 (含数字/日期/百分比的句子)。
+
+        会先清理 URL/markdown链接/引用来源, 避免把链接碎片当声明。
+        """
+        # 预处理: 去掉 URL、markdown 链接、引用来源标记
+        clean_report = report
+        # 去掉 markdown 链接 [text](url) → text
+        clean_report = re.sub(r"\[([^\]]*)\]\(https?://[^\)]+\)", r"\1", clean_report)
+        # 去掉裸 URL
+        clean_report = re.sub(r"https?://\S+", "", clean_report)
+        # 去掉 (来源：xxx) / (source: xxx) 整段
+        clean_report = re.sub(r"[（(]\s*(?:来源|source)[:：].*?[)）]", "", clean_report, flags=re.IGNORECASE)
+        # 去掉 [source: xxx]
+        clean_report = re.sub(r"\[source:.*?\]", "", clean_report, flags=re.IGNORECASE)
+        # 去掉 markdown 标记符号
+        clean_report = re.sub(r"[#*`>]", "", clean_report)
+
         # 按句子分割
-        sentences = re.split(r"[。.!！?？\n]+", report)
+        sentences = re.split(r"[。.!！?？\n]+", clean_report)
         claims = []
         for s in sentences:
-            s = s.strip()
-            if len(s) < 15 or len(s) > 200:
+            s = s.strip().strip("：:、，,")
+            if len(s) < 20 or len(s) > 200:
+                continue
+            # 跳过纯 URL 碎片 / 文件扩展名 / 无意义的短串
+            if re.match(r"^(com|html|www|http|https|org|net|article|\d+)$", s, re.I):
+                continue
+            # 必须包含实际词汇 (中文字符≥3 或 英文单词≥3)
+            cn_chars = len(re.findall(r"[\u4e00-\u9fff]", s))
+            en_words = len(re.findall(r"[a-zA-Z]{2,}", s))
+            if cn_chars < 3 and en_words < 3:
                 continue
             # 优先级: 含数字/百分比/日期/对比词
-            has_number = bool(re.search(r"\d+(?:\.\d+)?%?|¥|$", s))
-            has_date = bool(re.search(r"\d{4}\s*年|\d{1,2}\s*月|january|february|202[0-9]", s, re.I))
+            has_number = bool(re.search(r"\d+(?:\.\d+)?\s*[%万千亿元倍]|\d+\.\d+|"
+                                        r"\d{2,}", s))
+            has_date = bool(re.search(r"\d{4}\s*年|\d{1,2}\s*月|"
+                                      r"january|february|202[0-9]", s, re.I))
             has_compare = bool(re.search(r"\b(?:more|less|faster|slower|better|worse|"
-                                          r"比|超过|低于|高于|提升|降低)\b", s, re.I))
+                                          r"比|超过|低于|高于|提升|降低|上涨|下降|增长)\b", s, re.I))
             if has_number or has_date or has_compare:
-                # 去掉 markdown 标记
-                clean = re.sub(r"[#*`\[\]()]|source:.*", "", s).strip()
-                if clean and len(clean) > 15:
-                    claims.append(clean)
+                claims.append(s)
         return claims
 
     def _build_summary_prompt(self, question: str, context: ResearchContext,
