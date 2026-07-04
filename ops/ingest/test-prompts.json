@@ -1,0 +1,5 @@
+[
+  {"id": 1, "prompt": "把 https://example.com/这篇文章 存进知识库", "expected": "skill 调 url 子命令, 告知后台异步处理, 不要假装立刻可问答"},
+  {"id": 2, "prompt": "这个 PDF 报告 reports/q3.pdf 加到知识库，里面有重要表格", "expected": "skill 走 pdf 专用路径 (MinerU), 先 probe 检查 MinerU, 解析后存为文本源+原PDF备份, 强调表格会保留"},
+  {"id": 3, "prompt": "我存进去的那篇，核心结论是什么？", "expected": "skill 调 ask 子命令做 RAG 问答, 如果返回空则检查 source 处理状态而非直接判定失败"}
+]

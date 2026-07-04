@@ -1,0 +1,5 @@
+[
+  {"id": 1, "prompt": "帮我把 recordings/周一周会.m4a 转成会议纪要，大概 5 个人开会", "expected": "skill 应走完整模式 (Aham), 确认说话人=5, 上传→等待→导出纪要, 告知预计耗时"},
+  {"id": 2, "prompt": "这段语音我只要快速文字稿，不要那些花里胡哨的", "expected": "skill 识别'快速''只要文字'→走 quick 模式 (SenseVoice), 出纯文字稿"},
+  {"id": 3, "prompt": "我之前那个会议转完了吗？id 是 rec_abc123", "expected": "skill 调 status 子命令查询, 报告 ASR/纪要各阶段状态, 不重新上传"}
+]
