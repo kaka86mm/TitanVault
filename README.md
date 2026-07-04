@@ -77,6 +77,28 @@ TitanVault isn't just glue around existing tools — it includes several **origi
 
 Plus custom ROCm Dockerfiles for [MinerU](images/mineru-rocm/) and [ComfyUI](images/comfyui-rocm/) — adapted to run on gfx1151 where official CUDA images won't work.
 
+## 🎯 Hermes Skills
+
+Hermes ships with **scenario-driven skills** — not raw API wrappers, but end-to-end workflows that chain services together to accomplish a user goal. Each skill follows the same pattern: a permission matrix, a deterministic shell script, a failure-mode table, and an anti-pattern blacklist.
+
+| Skill | What it does | Triggers |
+|---|---|---|
+| **mozin-ops** | Operate & troubleshoot the workstation (health, heal, backup, report) | "check status", "heal", "disk full" |
+| **mozin-meeting** | Turn a meeting recording into structured markdown minutes | "process this meeting", "transcribe recording", "meeting minutes" |
+| **mozin-ingest** | Ingest any URL / PDF / text into the knowledge base, then ask questions | "save this link to notebook", "ingest this PDF", "what does this say" |
+| **titanvault-ops** | Hardware & architecture knowledge base (passive) | hardware questions, GPU/port/config lookups |
+
+**Meeting skill** offers two paths: *full mode* (Aham Voice: transcription + speaker diarization + AI minutes + emotion) or *quick mode* (SenseVoice: fast plain-text transcript). The ingest skill auto-detects PDFs and routes them through MinerU for table/formula-preserving parsing before embedding.
+
+Two **meta-skills** are also included for building and refining further skills:
+
+| Meta-skill | Role | Source |
+|---|---|---|
+| **女娲 (Nuwa)** | Distill a person/topic's thinking framework into a runnable skill | [alchaincyf/nuwa-skill](https://github.com/alchaincyf/nuwa-skill) |
+| **达尔文 (Darwin)** | Evaluate & optimize any skill via a 9-dimension rubric (SkillLens) with hill-climbing | [alchaincyf/darwin-skill](https://github.com/alchaincyf/darwin-skill) |
+
+> The meeting & ingest skills were evaluated with Darwin's 9-dimension rubric and verified end-to-end on-device (full-test, not dry-run): meeting transcription, URL ingest, and RAG Q&A all pass.
+
 ## 🚀 Quick Start
 
 ```bash
@@ -220,6 +242,8 @@ TitanVault/
 ├── images/                   # Original component sources (portal, ASR, voice, ...)
 ├── native/                   # systemd services (llama.cpp, Hermes, OpenSquilla, Chrome)
 ├── config/                   # Templates (.env, Caddy, LiteLLM, Hermes)
+│   └── hermes/skills/        # Hermes skills (ops knowledge + nuwa/darwin meta-skills)
+├── ops/                      # Scenario skills (meeting, ingest, mozin-ops)
 ├── presets/                  # minimal / standard / full
 ├── hardware/                 # Strix Halo-specific parameters
 ├── models/                   # Model manifest + download config
