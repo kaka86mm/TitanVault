@@ -26,7 +26,7 @@ from tools import search as tool_search, visit as tool_visit, \
 # Prompts
 # ============================================================================
 
-INITIAL_PROMPT = """You are QUEST, a deep research agent. Answer the user's question by SEARCHING the web, reading pages, then writing a report.
+INITIAL_PROMPT = """You are QUEST, a deep research agent. Answer the user's question thoroughly by SEARCHING the web, reading pages, then writing a high-quality research report.
 
 ## Tools (output <tool_call> to use one)
 - exa: BEST search (semantic, high quality). Example: <tool_call>{{"name":"exa","arguments":{{"query":["your query"]}}}}}}</tool_call>
@@ -35,16 +35,39 @@ INITIAL_PROMPT = """You are QUEST, a deep research agent. Answer the user's ques
 - xiaohongshu: 小红书 Chinese lifestyle reviews. name="xiaohongshu".
 - visit: Read a URL. {{"name":"visit","arguments":{{"url":["URL"],"goal":"..."}}}}
 
-## RULES
+## Research Strategy (CRITICAL — follow strictly)
 1. You MUST call tools. Do NOT answer from memory.
-2. Start with exa (best results), then use search for follow-ups.
-3. If topic involves opinions/discussions → also call twitter.
-4. Call at least 2 searches before writing report.
+2. BREAK DOWN the question into 3-5 sub-questions, search EACH separately.
+3. Search at least 5 times total (different angles: overview, details, comparisons, data/numbers, recent news).
+4. Start with exa (best results), then search for follow-ups and Chinese sources.
+5. Visit 3-5 key pages to read details (not just snippets).
+6. If topic involves opinions/discussions → also call twitter.
+
+## Report Format (write this when done researching)
+```
+# [Research Title]
+
+> **Summary**: 2-3 sentence overview of key findings.
+
+## 1. [First Section]
+[Detailed analysis with data, not just bullet points]
+
+## 2. [Second Section]
+...
+
+## N. Conclusion
+[Synthesize findings, note limitations]
+```
+
+## Citation Rules
+- Use [source: URL] at the END of sentences. Example: B300 costs 770万元 [source: https://...].
+- Do NOT use （来源：[网站名](URL)）format — it is verbose.
+- Every key fact MUST have a citation.
 
 ## Process
-Search → read results → search more → visit key pages → write report with [source: URL] citations.
+Search many angles → visit key pages → write report.
 
-When you have enough info, STOP calling tools and write the report in markdown."""
+When you have enough info, STOP calling tools and write the report."""
 
 
 ITERATE_PROMPT = """You are QUEST, a deep research agent. The user wants to IMPROVE an existing research report.
@@ -255,23 +278,27 @@ class ResearchAgent:
               "iteration": is_iteration, "max_turns": self.max_turns})
 
         # ── 预热搜索: 自动用 exa + searxng 各搜一次, 注入初始上下文 ──
-        # QUEST-9B 倾向只调 search, 这里强制先跑 exa (高质量语义搜索)
-        # 让模型后续专注于 visit + 追加 twitter/小红书 (社媒讨论)
+        # 只给标题+URL (不给完整 snippet), 引导 QUEST 自己 visit 深入阅读
         primer = self._primer_search(question, context, emit)
         if primer:
             messages.append({"role": "user",
-                             "content": f"<tool_response>\n{primer}\n</tool_response>"})
+                             "content": f"<tool_response>\n{primer}\n</tool_response>\n\n"
+                                        f"These are initial results (titles only). "
+                                        f"Now break down the question into sub-questions and search each. "
+                                        f"Visit key pages for details. Do NOT write the report yet."})
 
         for turn in range(self.max_turns):
             emit({"type": "thinking", "turn": turn + 1, "max_turns": self.max_turns})
 
-            # LLM 推理
+            # LLM 推理 (关闭思维链: QUEST-9B 是推理模型, 默认把 max_tokens 花在
+            # reasoning_content 上导致 content 为空 → 报告失败)
             try:
                 resp = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     max_tokens=8192,
                     temperature=0.7,
+                    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
                 )
                 reply = resp.choices[0].message.content or ""
             except Exception as e:
@@ -283,16 +310,23 @@ class ResearchAgent:
             # 解析 tool_call
             tool_call = self._parse_tool_call(reply)
             if not tool_call:
-                # 没工具调用 = 最终报告
+                # 没工具调用 = 可能是最终报告
                 report = self._extract_report(reply)
-                if not report or len(report) < 20:
+                # 报告够长, 或者看起来像报告(有标题) → 接受
+                if report and (len(report) >= 150 or report.startswith("#")):
+                    report = self._verify_report(report, context, emit)
+                    context.add_version(report)
+                    emit({"type": "report", "version": context.current_version,
+                          "content": report, "changes": "initial" if not is_iteration else "updated"})
+                    return report
+                else:
+                    # 提取失败 (太短/纯思维链) → fallback 兜底
                     report = self._build_fallback_report(question, context)
-                # 幻觉验证
-                report = self._verify_report(report, context, emit)
-                context.add_version(report)
-                emit({"type": "report", "version": context.current_version,
-                      "content": report, "changes": "initial" if not is_iteration else "updated"})
-                return report
+                    report = self._verify_report(report, context, emit)
+                    context.add_version(report)
+                    emit({"type": "report", "version": context.current_version,
+                          "content": report, "changes": "initial" if not is_iteration else "updated"})
+                    return report
 
             name, args = tool_call
             try:
@@ -320,6 +354,7 @@ class ResearchAgent:
             resp = self.client.chat.completions.create(
                 model=self.model, messages=summary_messages,
                 max_tokens=4096, temperature=0.7,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
             report = self._extract_report(resp.choices[0].message.content or "")
         except Exception as e:
@@ -507,26 +542,39 @@ class ResearchAgent:
         if not matches:
             return None
         raw = matches[-1].strip()
-        # 还原双花括号 (QUEST 从 prompt 的 format string 转义学到 {{}})
-        raw = raw.replace("{{", "{").replace("}}", "}")
-        try:
-            call = json.loads(raw)
-            if not isinstance(call, dict):
+        # QUEST 可能输出 {{}} 双花括号 (从 prompt format string 转义学到)
+        # 先试直接解析; 失败才替换双花括号 (避免破坏正常 JSON 嵌套的 }})
+        def _try_parse(s):
+            try:
+                return json.loads(s)
+            except (json.JSONDecodeError, TypeError):
                 return None
-            name = call.get("name")
-            args = call.get("arguments", {})
-            if not name:
-                return None
-            if isinstance(args, str):
-                try:
-                    args = json.loads(args)
-                except json.JSONDecodeError:
-                    args = {}
-            if not isinstance(args, dict):
-                args = {}
-            return name, args
-        except (json.JSONDecodeError, AttributeError, TypeError):
+
+        call = _try_parse(raw)
+        if call is None:
+            # 替换双花括号后重试 (循环处理嵌套的 {{}}})
+            fixed = raw
+            for _ in range(10):
+                fixed = fixed.replace("{{", "{").replace("}}", "}")
+                call = _try_parse(fixed)
+                if call is not None:
+                    break
+                if "{{" not in fixed and "}}" not in fixed:
+                    break
+        if not isinstance(call, dict):
             return None
+        name = call.get("name")
+        args = call.get("arguments", {})
+        if not name:
+            return None
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
+        return name, args
 
     def _primer_search(self, question: str, context: ResearchContext,
                        emit) -> str:

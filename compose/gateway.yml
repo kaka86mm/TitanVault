@@ -123,7 +123,7 @@ services:
       ON_BASE_URL: "http://host-gateway:5055"
       MINERU_URL: "http://host-gateway:18080"
       REPORTS_DIR: "/data/quest-reports"
-      MAX_TURNS: "6"
+      MAX_TURNS: "8"
       # 代理 (mihomo, 让 visit/verify 能访问国外页面 + Jina Reader)
       HTTP_PROXY: "http://host-gateway:7890"
       HTTPS_PROXY: "http://host-gateway:7890"
