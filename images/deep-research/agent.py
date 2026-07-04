@@ -39,8 +39,9 @@ INITIAL_PROMPT = """You are QUEST, a deep research agent. Today's date: {today}.
 1. You MUST call tools. Do NOT answer from memory.
 2. BREAK DOWN the question into 3-5 sub-questions, search EACH separately.
 3. Search at least 5 times total (different angles).
-4. Start with exa, then search for follow-ups.
-5. Visit 3-5 key pages to read details (not just snippets).
+4. ALWAYS include a search for LATEST/recent data (add "最新", current month/year, "2026" to queries). The report must cover data up to today ({today}), not stop at older dates.
+5. Start with exa, then search for follow-ups and Chinese sources.
+6. Visit 3-5 key pages to read details (not just snippets).
 
 ## Anti-Hallucination Rules (CRITICAL)
 - NEVER fabricate numbers, prices, dates, or statistics. Only use data from search results.
@@ -617,6 +618,19 @@ class ResearchAgent:
                   "count": len(r2["results"]), "engine": "searxng", "auto": True})
         else:
             emit({"type": "search_done", "query": question, "count": 0,
+                  "engine": "searxng", "auto": True})
+        # 最新动态搜索: 加 "最新/latest/2026" 关键词, 确保覆盖到当前月份
+        today = datetime.now()
+        recent_q = f"{question[:40]} 最新 {today.year}年{today.month}月"
+        emit({"type": "search", "query": recent_q, "engine": "searxng", "auto": True})
+        r3 = tool_search(recent_q)
+        context.add_search(recent_q)
+        if r3.get("results"):
+            results.append(self._format_search_results(r3))
+            emit({"type": "search_done", "query": recent_q,
+                  "count": len(r3["results"]), "engine": "searxng", "auto": True})
+        else:
+            emit({"type": "search_done", "query": recent_q, "count": 0,
                   "engine": "searxng", "auto": True})
 
         # 社媒讨论: 问题含社区/评价/体验等关键词时, 自动追加 twitter + 小红书
