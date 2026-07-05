@@ -105,10 +105,10 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
 .status-done { background: var(--success-dim); color: var(--success); }
 .status-finalized { background: var(--purple-dim); color: var(--purple); }
 
-/* session-body: 报告主区占满, 对话抽屉用 overlay 浮在上方 (不挤压报告) */
+/* session-body: 报告占满, 抽屉用 absolute overlay */
 .session-body { flex: 1; display: flex; overflow: hidden; min-height: 0; position: relative; }
 
-/* 报告主区 (占满整个 session-body) */
+/* 报告主区 (占满 session-body) */
 .report-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 .version-tabs { display: flex; gap: var(--space-1); padding: var(--space-2) var(--space-6);
   border-bottom: 1px solid var(--border-subtle); align-items: center; flex-shrink: 0;
@@ -153,30 +153,32 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
 .report-area .md hr { border: none; border-top: 1px solid var(--border-subtle); margin: var(--space-4) 0; }
 .report-area .empty { color: var(--fg-muted); text-align: center; padding: var(--space-8); }
 
-/* 对话抽屉 (右侧 flex, 展开时挤压报告区) */
-.chat-drawer { display: flex; align-items: stretch; flex-shrink: 0;
-  border-left: 1px solid var(--border); transition: width 0.25s var(--ease-out);
-  overflow: hidden; }
-/* 收起状态: 只显示窄竖条按钮 */
-.chat-drawer:not(.open) { width: 44px; }
+/* 对话抽屉 (右侧浮动, 收起时只显示 FAB 按钮) */
+.chat-drawer { position: absolute; top: 0; right: 0; bottom: 0; z-index: 50;
+  display: flex; align-items: stretch; transition: all 0.25s var(--ease-out);
+  pointer-events: none; }
+/* 收起状态: 不占空间, 只显示浮动按钮 */
+.chat-drawer:not(.open) { width: 0; }
 .chat-drawer:not(.open) .chat-panel { display: none; }
-/* 展开状态: 360px 面板 */
-.chat-drawer.open { width: 360px; }
+/* 展开状态: 360px overlay 面板 */
+.chat-drawer.open { width: 360px; pointer-events: auto;
+  box-shadow: -8px 0 24px rgba(0,0,0,0.4); }
 .chat-drawer.open .chat-toggle { display: none; }
 
-/* 竖条 toggle 按钮 (收起时显示) */
-.chat-toggle { width: 44px; display: flex; flex-direction: column; align-items: center;
-  justify-content: flex-start; padding-top: var(--space-4); cursor: pointer; gap: var(--space-2);
-  background: var(--surface); border: none; color: var(--fg-muted); transition: all 0.15s;
-  writing-mode: vertical-rl; text-orientation: mixed; position: relative; }
-.chat-toggle:hover { background: var(--surface-hover); color: var(--accent); }
-.chat-toggle-icon { font-size: 18px; writing-mode: horizontal-tb; }
-.chat-badge { position: absolute; top: 10px; right: 6px; min-width: 18px; height: 18px;
+/* 浮动 FAB 按钮 (收起时) */
+.chat-toggle { position: fixed; bottom: 24px; right: 24px; z-index: 60;
+  width: 48px; height: 48px; border-radius: 50%; cursor: pointer; pointer-events: auto;
+  background: var(--accent); color: #fff; border: none; font-size: 20px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: all 0.2s;
+  writing-mode: horizontal-tb; }
+.chat-toggle:hover { filter: brightness(1.15); transform: scale(1.05); }
+.chat-toggle-icon { font-size: 20px; }
+.chat-badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px;
   background: var(--danger, #ef4444); color: #fff; font-size: 11px; font-weight: 700;
   border-radius: 9px; display: flex; align-items: center; justify-content: center; padding: 0 5px;
-  writing-mode: horizontal-tb; animation: badge-pulse 1.5s infinite; }
+  border: 2px solid var(--bg-elevated); }
 .chat-badge.hidden { display: none; }
-@keyframes badge-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
 
 /* 面板内容 (展开时) */
 .chat-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden;
