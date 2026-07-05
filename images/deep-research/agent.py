@@ -328,8 +328,13 @@ class ResearchAgent:
             if not tool_call:
                 # 没工具调用 = 可能是最终报告
                 report = self._extract_report(reply)
-                # 报告够长, 或者看起来像报告(有标题) → 接受
-                if report and (len(report) >= 150 or report.startswith("#")):
+                # 检查是否真的是报告 (不是 tool call 残留)
+                # 报告必须有 markdown 标题 且 主体够长 (去掉验证段后)
+                report_body = re.split(r"##\s*📎\s*来源验证", report)[0]
+                is_real_report = (report.startswith("#") and len(report_body) >= 200
+                                  and "<|start|>" not in report
+                                  and "functions." not in report[:50])
+                if is_real_report:
                     report = self._verify_report(report, context, emit)
                     context.add_version(report)
                     emit({"type": "report", "version": context.current_version,
@@ -549,8 +554,14 @@ class ResearchAgent:
         """从 LLM 输出解析 <tool_call>{...}</tool_call>。
 
         QUEST 常模仿 prompt 里的 {{}} 转义格式, 这里统一还原成单花括号再解析。
+        QUEST 关掉 thinking 后可能输出 <|start|>functions.xxx<|message|> 格式。
         """
+        # 格式1: <tool_call>{...}</tool_call>
         matches = re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", text, re.DOTALL)
+        # 格式2: <|start|>functions.xxx<|message|>{...} (Qwen jinja 格式)
+        if not matches:
+            matches2 = re.findall(r"<\|start\|>functions\.\w+<\|message\|>\s*(.*?)\s*(?:<\|end\|>|$)", text, re.DOTALL)
+            matches = matches2
         if not matches:
             return None
         raw = matches[-1].strip()
@@ -820,6 +831,11 @@ class ResearchAgent:
         for tag in ["tool_call", "think", "tool_response"]:
             text = re.sub(r"<%s>.*?</%s>" % (tag, tag), "", text, flags=re.DOTALL)
             text = re.sub(r"<%s>.*" % tag, "", text, flags=re.DOTALL)
+        # 清理 Qwen jinja 格式残留: <|start|>functions.xxx<|message|>...<|end|>
+        text = re.sub(r"<\|start\|>functions\.\w+<\|message\|>.*?(?:<\|end\|>|$)", "", text, flags=re.DOTALL)
+        text = re.sub(r"<\|start\|>.*?<\|message\|>", "", text, flags=re.DOTALL)
+        text = re.sub(r"<\|end\|>", "", text)
+        text = re.sub(r"<\|im_start\|>.*?<\|im_end\|>", "", text, flags=re.DOTALL)
         # note/related_urls 只去标签本身, 保留内容 (可能含引用链接)
         for tag in ["note", "related_urls"]:
             text = re.sub(r"</?%s>" % tag, "", text)
