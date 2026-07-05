@@ -329,22 +329,33 @@ class ResearchAgent:
                 # 没工具调用 = 可能是最终报告
                 report = self._extract_report(reply)
                 report_body = re.split(r"##\s*📎\s*来源验证", report)[0].strip()
-                # 严格的报告验收标准:
-                # 1. 必须以 # 标题开头
-                # 2. 至少 3 个 ## 章节标题 (说明有结构)
-                # 3. 主体至少 500 字 (不是一句话)
-                # 4. 不能有 jinja/tool_call 残留
-                # 5. 必须有引用链接 [text](url) 或 [source: url]
+                # 严格的报告验收标准
                 n_sections = len(re.findall(r'^##\s+', report_body, re.MULTILINE))
-                has_citations = bool(re.search(r'\[([^\]]*)\]\(https?://', report_body)
-                                     or re.search(r'\[source:', report_body))
+                # 垃圾内容检测: JS代码/HTML标签/网页噪音/重复内容
+                has_junk = bool(
+                    "</string>" in report_body
+                    or "console.error" in report_body
+                    or "catch (error)" in report_body
+                    or report_body.count("相关网址") > 3
+                    or report_body.count("https://") > 50  # URL列表不是报告
+                    or "<|start|>" in report_body
+                    or "<tool_call>" in report_body
+                    or "functions." in report_body[:100]
+                    # 检测重复段落 (同一句子重复5+次)
+                    or len(re.findall(r'report_body', report_body)) > 0  # placeholder
+                )
+                # 检测高度重复 (同一个100字符块出现3+次 = 网页噪音/循环输出)
+                if not has_junk and len(report_body) > 500:
+                    chunks = [report_body[i:i+100] for i in range(0, len(report_body)-100, 50)]
+                    from collections import Counter
+                    most_common_count = Counter(chunks).most_common(1)[0][1] if chunks else 0
+                    if most_common_count >= 3:
+                        has_junk = True
                 is_real_report = (
                     report_body.startswith("#")
                     and n_sections >= 3
                     and len(report_body) >= 500
-                    and "<|start|>" not in report_body
-                    and "functions." not in report_body[:100]
-                    and "<tool_call>" not in report_body
+                    and not has_junk
                 )
                 if is_real_report:
                     report = self._verify_report(report, context, emit)
@@ -851,6 +862,13 @@ class ResearchAgent:
         # note/related_urls 只去标签本身, 保留内容 (可能含引用链接)
         for tag in ["note", "related_urls"]:
             text = re.sub(r"</?%s>" % tag, "", text)
+        # 清理网页代码泄露: JS代码块、</string>标签、HTML script
+        text = re.sub(r"</?string>", "", text)
+        text = re.sub(r"\bconsole\.\w+\(.*?\);?", "", text)
+        text = re.sub(r"\} catch \(error\) \{[^}]*\}", "", text, flags=re.DOTALL)
+        text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        # 去掉高度重复的"相关网址"段落 (网页噪音)
+        text = re.sub(r"(相关网址\n(?:(?:https?://\S+\n?){2,}|\S+\n)){2,}", "相关网址\n（见引用列表）\n", text)
         # 2. 搜索结果块
         text = re.sub(r"^##\s*Search Results?:.*?(?=^##\s|\Z)", "", text,
                       flags=re.DOTALL | re.MULTILINE)
