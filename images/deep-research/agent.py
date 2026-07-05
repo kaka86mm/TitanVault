@@ -20,7 +20,7 @@ from openai import OpenAI
 from tools import search as tool_search, visit as tool_visit, \
     exa_search as tool_exa, twitter_search as tool_twitter, \
     xiaohongshu_search as tool_xhs, wechat_search as tool_wechat, \
-    verify_claim as tool_verify_claim, verify_url as tool_verify_url
+    verify_url as tool_verify_url
 
 # ============================================================================
 # Prompts
@@ -410,114 +410,85 @@ class ResearchAgent:
 
     def _verify_report(self, report: str, context: ResearchContext,
                        emit: Callable) -> str:
-        """幻觉抵御: 抽取关键事实声明 → 搜索引擎二次验证 → 追加验证摘要。
+        """引用完整性验证 (参考 gpt-researcher 的可信度策略)。
 
-        最多验证 8 个声明 (优先含数字/日期的)。验证结果追加到报告末尾。
+        不再做"重新搜索验证数字"(不可靠且产生误报),而是:
+        1. 检查报告中的引用 URL 数量和可达性
+        2. 检查含数字的句子是否有对应引用
+        3. 追加来源可信度摘要
         """
         emit({"type": "verify_start"})
-        claims = self._extract_claims(report)
 
-        if not claims:
-            emit({"type": "verify_done", "total": 0})
-            return report
+        # 1. 提取报告中所有引用 URL (markdown 链接)
+        md_urls = re.findall(r'\[[^\]]*\]\((https?://[^\)]+)\)', report)
+        cited_urls = list(dict.fromkeys(md_urls))  # 去重保序
 
-        # 最多 8 个
-        claims = claims[:8]
-        results = []
-
-        for claim in claims:
-            emit({"type": "verify", "claim": claim[:80]})
+        # 2. 检查引用 URL 可达性 (最多检查 5 个)
+        reachable = 0
+        unreachable_urls = []
+        for url in cited_urls[:5]:
+            emit({"type": "verify", "claim": url[:60]})
             try:
-                vr = tool_verify_claim(claim)
-                results.append({"claim": claim, **vr})
-                emit({"type": "verify_done", "claim": claim[:80],
-                      "status": vr["status"], "evidence_count": len(vr.get("evidence", []))})
-            except Exception as e:
-                results.append({"claim": claim, "status": "unverified",
-                                "error": str(e)})
-                emit({"type": "verify_done", "claim": claim[:80],
-                      "status": "unverified", "error": str(e)})
+                check = tool_verify_url(url)
+                if check.get("reachable"):
+                    reachable += 1
+                    emit({"type": "verify_done", "claim": url[:60],
+                          "status": "verified"})
+                else:
+                    unreachable_urls.append(url)
+                    emit({"type": "verify_done", "claim": url[:60],
+                          "status": "unverified"})
+            except Exception:
+                emit({"type": "verify_done", "claim": url[:60],
+                      "status": "unverified"})
 
-        # 验证 URL 引用可达性
-        url_claims = re.findall(r"\[source: (.+?)\]|🔗 (.+?)(?:\s|$)", report)
-        for url_group in url_claims[:5]:
-            url = url_group[0] or url_group[1]
-            if url.startswith("http"):
-                url_check = tool_verify_url(url)
-                if not url_check.get("reachable"):
-                    results.append({"claim": f"URL: {url}",
-                                    "status": "unverified",
-                                    "reason": "链接不可达"})
+        # 3. 统计含数字句子中有引用的比例
+        sentences_with_numbers = re.findall(r'[^\n.。!！?？]*\d+[^\n.。!！?？]*', report)
+        cited_sentences = [s for s in sentences_with_numbers if re.search(r'\]\(https?://', s)]
+        citation_rate = len(cited_sentences) / max(len(sentences_with_numbers), 1)
 
-        # 构造验证摘要
-        verified = sum(1 for r in results if r["status"] == "verified")
-        partial = sum(1 for r in results if r["status"] == "partial")
-        unverified = sum(1 for r in results if r["status"] == "unverified")
+        # 4. 构造可信度摘要
+        total_cited = len(cited_urls)
+        checked = min(len(cited_urls), 5)
+        if total_cited == 0:
+            trust_level = "⚠️ 无引用"
+            trust_color = "⚠️"
+        elif total_cited >= 5 and reachable >= checked * 0.6:
+            trust_level = "✅ 高可信"
+            trust_color = "✅"
+        elif total_cited >= 3:
+            trust_level = "⚠️ 中等可信"
+            trust_color = "⚠️"
+        else:
+            trust_level = "❌ 低可信"
+            trust_color = "❌"
 
         summary_lines = [
-            "\n\n---\n\n## 🔍 事实验证\n",
-            f"> 自动验证了 {len(results)} 个关键声明: "
-            f"✅ {verified} 已验证 / ⚠️ {partial} 部分验证 / ❌ {unverified} 未验证\n",
+            "\n\n---\n\n## 📎 来源验证\n",
+            f"> {trust_color} **{trust_level}** — "
+            f"报告引用了 {total_cited} 个来源, "
+            f"其中 {reachable}/{checked} 个链接可达, "
+            f"{int(citation_rate*100)}% 的数据句有引用。\n",
         ]
 
-        for r in results:
-            status_icon = {"verified": "✅", "partial": "⚠️", "unverified": "❌"}.get(
-                r["status"], "❓")
-            summary_lines.append(f"- {status_icon} **{r['claim'][:100]}**")
-            if r.get("evidence"):
-                for ev in r["evidence"][:2]:
-                    summary_lines.append(f"  - [{ev.get('title','')[:50]}]({ev.get('url','')})")
-            elif r.get("reason"):
-                summary_lines.append(f"  - {r['reason']}")
+        if cited_urls:
+            summary_lines.append("**引用来源:**")
+            for i, url in enumerate(cited_urls[:10], 1):
+                domain = re.search(r'https?://([^/]+)', url)
+                domain_name = domain.group(1) if domain else url[:30]
+                summary_lines.append(f"{i}. [{domain_name}]({url})")
+        else:
+            summary_lines.append("⚠️ 本报告未包含来源引用,数据可信度无法验证。")
 
-        emit({"type": "verify_done", "total": len(results),
-              "verified": verified, "partial": partial, "unverified": unverified})
+        if unreachable_urls:
+            summary_lines.append(f"\n**不可达链接 ({len(unreachable_urls)}):**")
+            for url in unreachable_urls[:3]:
+                summary_lines.append(f"- {url[:80]}")
+
+        emit({"type": "verify_done", "total": total_cited,
+              "verified": reachable, "trust": trust_level})
 
         return report + "\n".join(summary_lines)
-
-    def _extract_claims(self, report: str) -> list:
-        """从报告抽取需要验证的事实声明 (含数字/日期/百分比的句子)。
-
-        会先清理 URL/markdown链接/引用来源, 避免把链接碎片当声明。
-        """
-        # 预处理: 去掉 URL、markdown 链接、引用来源标记
-        clean_report = report
-        # 去掉 markdown 链接 [text](url) → text
-        clean_report = re.sub(r"\[([^\]]*)\]\(https?://[^\)]+\)", r"\1", clean_report)
-        # 去掉裸 URL
-        clean_report = re.sub(r"https?://\S+", "", clean_report)
-        # 去掉 (来源：xxx) / (source: xxx) 整段
-        clean_report = re.sub(r"[（(]\s*(?:来源|source)[:：].*?[)）]", "", clean_report, flags=re.IGNORECASE)
-        # 去掉 [source: xxx]
-        clean_report = re.sub(r"\[source:.*?\]", "", clean_report, flags=re.IGNORECASE)
-        # 去掉 markdown 标记符号
-        clean_report = re.sub(r"[#*`>]", "", clean_report)
-
-        # 按句子分割
-        sentences = re.split(r"[。.!！?？\n]+", clean_report)
-        claims = []
-        for s in sentences:
-            s = s.strip().strip("：:、，,")
-            if len(s) < 20 or len(s) > 200:
-                continue
-            # 跳过纯 URL 碎片 / 文件扩展名 / 无意义的短串
-            if re.match(r"^(com|html|www|http|https|org|net|article|\d+)$", s, re.I):
-                continue
-            # 必须包含实际词汇 (中文字符≥3 或 英文单词≥3)
-            cn_chars = len(re.findall(r"[\u4e00-\u9fff]", s))
-            en_words = len(re.findall(r"[a-zA-Z]{2,}", s))
-            if cn_chars < 3 and en_words < 3:
-                continue
-            # 优先级: 含数字/百分比/日期/对比词
-            has_number = bool(re.search(r"\d+(?:\.\d+)?\s*[%万千亿元倍]|\d+\.\d+|"
-                                        r"\d{2,}", s))
-            has_date = bool(re.search(r"\d{4}\s*年|\d{1,2}\s*月|"
-                                      r"january|february|202[0-9]", s, re.I))
-            has_compare = bool(re.search(r"\b(?:more|less|faster|slower|better|worse|"
-                                          r"比|超过|低于|高于|提升|降低|上涨|下降|增长)\b", s, re.I))
-            if has_number or has_date or has_compare:
-                claims.append(s)
-        return claims
 
     def _build_summary_prompt(self, question: str, context: ResearchContext,
                               is_iteration: bool) -> str:
