@@ -26,62 +26,54 @@ from tools import search as tool_search, visit as tool_visit, \
 # Prompts
 # ============================================================================
 
-INITIAL_PROMPT = """You are QUEST, a deep research agent. Today's date: {today}. Answer the user's question by SEARCHING the web, reading pages, then writing a research report.
+INITIAL_PROMPT = """You are an expert research agent. Today's date: {today}.
+Your goal: thoroughly research the user's question using web tools, then write a comprehensive, well-structured research report.
 
 ## Tools (output <tool_call> to use one)
-- exa: BEST search (semantic, high quality). Example: <tool_call>{{"name":"exa","arguments":{{"query":["your query"]}}}}}}</tool_call>
+- exa: Semantic search (high quality). <tool_call>{{"name":"exa","arguments":{{"query":["your query"]}}}}}}</tool_call>
 - search: Web search (google/bing). Same format, name="search".
-- twitter: Twitter/X discussions & opinions. name="twitter".
-- xiaohongshu: 小红书 Chinese lifestyle reviews. name="xiaohongshu".
-- wechat: 微信公众号文章 (Chinese in-depth analysis/industry opinions). name="wechat".
-- visit: Read a URL. {{"name":"visit","arguments":{{"url":["URL"],"goal":"..."}}}}
+- twitter: Twitter/X discussions. name="twitter".
+- xiaohongshu: 小红书 reviews. name="xiaohongshu".
+- wechat: 微信公众号 articles. name="wechat".
+- visit: Read a URL in detail. {{"name":"visit","arguments":{{"url":["URL"],"goal":"..."}}}}
 
-## Research Strategy (CRITICAL — follow strictly)
-1. You MUST call tools. Do NOT answer from memory.
-2. BREAK DOWN the question into 3-5 sub-questions, search EACH separately.
-3. Search at least 5 times total (different angles).
-4. ALWAYS include a search for LATEST/recent data (add "最新", current month/year, "2026" to queries). The report must cover data up to today ({today}), not stop at older dates.
-5. Start with exa, then search for follow-ups and Chinese sources.
-6. Visit 3-5 key pages to read details (not just snippets).
+## Research Process
+1. MUST call tools. Do NOT answer from memory or general knowledge.
+2. Break the question into 3-5 sub-questions. Search each separately with DIFFERENT queries.
+3. Search at least 5 times. Always include queries with current date for latest data.
+4. VISIT 5+ pages to read full content — search snippets are not enough.
+5. For Chinese topics: use search + wechat + xiaohongshu. For discussions: use twitter.
+6. Collect facts, numbers, statistics, quotes from visited pages.
 
-## Anti-Hallucination Rules (CRITICAL)
-- NEVER fabricate numbers, prices, dates, or statistics. Only use data from VISITED pages.
-- NEVER put specific numbers in search queries (e.g. do NOT search "H100 price 24000"). Search by TOPIC, not by guessed numbers.
-- NEVER reference future dates. If you don't have data for a time period, say "data not available".
-- Every number/price/date in your report MUST come from a visited page's actual text. If unsure, OMIT it.
-- If search results don't contain enough data, write a SHORTER report. Do NOT pad with invented details.
-- Write in ONE language only (match the user's question language).
-- Do NOT repeat content. Write the report ONCE.
+## Anti-Hallucination Rules
+- NEVER fabricate numbers, prices, dates, or statistics.
+- Only use data that appears in the text of pages you VISITED.
+- If you don't have data for something, omit it — do NOT guess or estimate.
+- Do NOT put specific numbers in search queries. Search by topic, not by guessed figures.
 
-## Report Format (write a THOROUGH report — use ALL gathered data)
-```
-# [Title]
+## Report Guidelines (when you have gathered enough information, write the report)
+Write a detailed, well-structured report using ALL gathered information. Follow these rules:
 
-> **Summary**: 2-3 sentence overview.
+1. **MUST determine your own concrete, valid conclusions** based on the gathered information. Do NOT defer to general, meaningless conclusions.
+2. Write in **markdown** with clear headers: `#` for title, `##` for major sections, `###` for subsections.
+3. Use **markdown tables** when presenting structured data or comparisons.
+4. **Prioritize relevance, reliability, and significance** of sources. Prefer newer articles over older ones.
+5. Include **in-text citations** as markdown hyperlinks at the end of the relevant sentence:
+   `Token usage grew 70% in June ([JPMorgan report](https://...)).`
+6. Add a **References** section at the END with ALL source URLs (deduplicated):
+   ```
+   ## References
+   1. [Source Name](url1)
+   2. [Source Name](url2)
+   ```
+7. Write in the SAME language as the user's question. Do NOT mix languages.
+8. Do NOT include a table of contents.
+9. Aim for **2000+ words** if enough data is available.
+10. Every key claim, number, or statistic MUST have a citation URL.
 
-## 1. [Section]
-[Detailed analysis. EVERY data point must have [source: URL]. Use data from MULTIPLE pages.]
+This is very important to my career. Assume the current date is {today}.
 
-## 2. [Another Section with different angle/perspective]
-...
-
-## N. Conclusion
-
-## References
-[List ALL source URLs you used, numbered]
-1. [source URL 1]
-2. [source URL 2]
-...
-```
-
-## Citation Rules (CRITICAL — report will be rejected if citations are missing)
-- EVERY number, price, date, statistic MUST have [source: URL] inline.
-- Example: Token usage grew 70% [source: https://...]
-- Aim for 8+ different source URLs cited in the report.
-- Include a References section at the END listing all sources.
-- Do NOT write data without a source. If you only have 3 sources, write a shorter report.
-
-When you have enough info, STOP calling tools and write the report ONCE."""
+When you have enough info, STOP calling tools and write the complete report."""
 
 
 ITERATE_PROMPT = """You are QUEST, a deep research agent. The user wants to IMPROVE an existing research report.
@@ -373,7 +365,19 @@ class ResearchAgent:
         # 避免 QUEST-9B 因上下文过大而返回空
         summary_prompt = self._build_summary_prompt(question, context, is_iteration)
         summary_messages = [
-            {"role": "system", "content": "You are a research assistant. Based on the gathered information below, write a comprehensive research report in markdown with citations. Write the report directly, do not call any tools."},
+            {"role": "system", "content":
+             "You are an expert research analyst. Based on the gathered information below, "
+             "write a detailed, well-structured research report answering the user's question. "
+             "Follow these rules:\n"
+             "1. Write in markdown with clear headers (# title, ## sections, ### subsections).\n"
+             "2. Use markdown tables for structured data.\n"
+             "3. Include in-text citations as hyperlinks: ([Source Name](url)).\n"
+             "4. Add a References section at the end with all source URLs.\n"
+             "5. MUST determine concrete conclusions — no generic platitudes.\n"
+             "6. Every number/statistic MUST come from the gathered info with a citation.\n"
+             "7. Write in the SAME language as the question.\n"
+             "8. Aim for 2000+ words. This is very important to my career.\n"
+             "Write the report directly, do not call any tools."},
             {"role": "user", "content": summary_prompt},
         ]
         try:
@@ -523,14 +527,18 @@ class ResearchAgent:
         if is_iteration and context.latest_report:
             parts.append(f"Previous Report:\n{context.latest_report[:3000]}\n")
 
-        parts.append("Information Gathered:")
+        parts.append("Information Gathered from web research:")
+        parts.append(f"(Based on {len(context.searched_queries)} searches, "
+                      f"{len(context.visited_urls)} pages visited)\n")
         for q in context.searched_queries:
             parts.append(f"- Searched: {q}")
+        parts.append("")
         for url, snippet in list(context.visited_urls.items())[:8]:
-            parts.append(f"- {url}:\n  {snippet[:1500]}")
+            parts.append(f"### Source: {url}")
+            parts.append(f"{snippet[:1500]}\n")
 
-        parts.append("\nWrite a comprehensive report answering the question. "
-                      "Use markdown with headers and [source: URL] citations.")
+        parts.append(f"\nUsing the above information, answer: \"{question}\" "
+                      f"in a detailed report with in-text citations and a References section.")
         return "\n".join(parts)
 
     def _build_fallback_report(self, question: str, context: ResearchContext) -> str:
