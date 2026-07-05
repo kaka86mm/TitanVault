@@ -151,6 +151,13 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
   margin: var(--space-3) 0; color: var(--fg-muted); }
 .report-area .md a { color: var(--accent); text-decoration: none; }
 .report-area .md hr { border: none; border-top: 1px solid var(--border-subtle); margin: var(--space-4) 0; }
+.report-area .md table { border-collapse: collapse; width: 100%; margin: var(--space-3) 0; font-size: var(--text-sm); }
+.report-area .md th, .report-area .md td { border: 1px solid var(--border); padding: var(--space-2) var(--space-3); text-align: left; }
+.report-area .md th { background: var(--surface); font-weight: 600; color: var(--fg); }
+.report-area .md td { color: var(--fg-2); }
+.report-area .md tr:nth-child(even) td { background: var(--surface); }
+.report-area .md h4 { font-size: var(--text-base); margin: var(--space-3) 0 var(--space-1); font-weight: 600; color: var(--fg-2); }
+.report-area .md ol { margin: var(--space-2) 0 var(--space-3) var(--space-5); color: var(--fg-2); font-size: 16px; line-height: 1.7; }
 .report-area .empty { color: var(--fg-muted); text-align: center; padding: var(--space-8); }
 
 /* 对话抽屉 (右侧浮动, 收起时只显示 FAB 按钮) */
@@ -758,35 +765,60 @@ function exportReport(format) {
 
 // ── Markdown renderer (轻量, 防 XSS) ──
 function renderMarkdown(md) {
+  if (!md) return '';
   let html = esc(md);
-  // code blocks
+  // code blocks (先处理, 避免内部内容被其他规则影响)
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (m, lang, code) => `<pre><code>${code}</code></pre>`);
+  // tables: | col | col | + |---|---|
+  html = html.replace(/((?:^\|.*\|\s*\n?)+)/gm, (tableBlock) => {
+    const lines = tableBlock.trim().split('\n').filter(l => l.trim());
+    if (lines.length < 2) return tableBlock;
+    // 检测分隔行 |---|---|
+    const isSeparator = (line) => /^\|[\s:]*-+[\s:|-]*$/.test(line.trim());
+    let result = '<table>';
+    let isHeader = true;
+    for (const line of lines) {
+      if (isSeparator(line)) { isHeader = false; continue; }
+      const cells = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      const tag = isHeader ? 'th' : 'td';
+      result += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+      isHeader = false;
+    }
+    return result + '</table>';
+  });
   // headings
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
   // bold / italic / code
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
   // links [text](url)
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   // [source: url] citations
-  html = html.replace(/\[source: (.+?)\]/g, '<a href="$1" target="_blank" style="font-size:11px;color:var(--accent)">📎 $1</a>');
+  html = html.replace(/\[source: (.+?)\]/g, '<a href="$1" target="_blank" style="font-size:11px;color:var(--accent)">📎source</a>');
   // hr
-  html = html.replace(/^---$/gm, '<hr>');
+  html = html.replace(/^---+$/gm, '<hr>');
   // blockquote
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-  // lists
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  // numbered lists
+  html = html.replace(/^\d+\. (.+)$/gm, '<oli>$1</oli>');
+  // bullet lists
+  html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+  // wrap consecutive <li> in <ul>, <oli> in <ol>
   html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
+  html = html.replace(/(<oli>[\s\S]*?<\/oli>)/g, '<ol>$1</ol>');
   html = html.replace(/<\/ul>\s*<ul>/g, '');
-  // paragraphs
+  html = html.replace(/<\/ol>\s*<ol>/g, '');
+  html = html.replace(/<oli>/g, '<li>').replace(/<\/oli>/g, '</li>');
+  // paragraphs (空行分隔)
   html = html.split(/\n\n+/).map(p => {
-    if (p.match(/^<(h\d|ul|ol|pre|blockquote|hr)/)) return p;
-    return p.trim() ? `<p>${p.replace(/\n/g,'<br>')}</p>` : '';
-  }).join('');
+    p = p.trim();
+    if (!p) return '';
+    if (p.match(/^<(h\d|ul|ol|pre|blockquote|hr|table)/)) return p;
+    return `<p>${p.replace(/\n/g,'<br>')}</p>`;
+  }).join('\n');
   return html;
 }
 
