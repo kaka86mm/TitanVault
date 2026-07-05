@@ -255,9 +255,33 @@ def visit(url: str, goal: str = "") -> dict:
             return jina_result
         return {"url": url, "content": "", "error": "No readable content"}
 
+    # 噪音检测: 导航菜单重复 (同一短语出现≥4次 = 噪音页面)
+    # 如果噪音太大, trafilatura 提取失败, 走 Jina Reader
+    if _is_navigation_noise(text):
+        jina_result = _visit_jina(url, goal)
+        if jina_result.get("content") and not _is_navigation_noise(jina_result["content"]):
+            return jina_result
+
     # 截断防超长
     text = text[:8000]
     return {"url": url, "content": text, "goal": goal}
+
+
+def _is_navigation_noise(text: str) -> bool:
+    """检测是否为导航菜单噪音 (而非正文)。
+
+    判断: 找出重复≥4次的 10-30 字短语, 如果重复内容占文本≥40% 就是噪音。
+    """
+    if len(text) < 100:
+        return True
+    # 提取所有 15 字片段, 统计重复
+    chunks = [text[i:i+15] for i in range(0, len(text)-15, 5)]
+    if not chunks:
+        return False
+    from collections import Counter
+    common = Counter(chunks).most_common(5)
+    repeat_ratio = sum(count for _, count in common if count >= 4) / len(chunks)
+    return repeat_ratio > 0.3
 
 
 def _visit_jina(url: str, goal: str = "") -> dict:

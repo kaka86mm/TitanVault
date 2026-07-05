@@ -44,9 +44,11 @@ INITIAL_PROMPT = """You are QUEST, a deep research agent. Today's date: {today}.
 6. Visit 3-5 key pages to read details (not just snippets).
 
 ## Anti-Hallucination Rules (CRITICAL)
-- NEVER fabricate numbers, prices, dates, or statistics. Only use data from search results.
+- NEVER fabricate numbers, prices, dates, or statistics. Only use data from VISITED pages.
+- NEVER put specific numbers in search queries (e.g. do NOT search "H100 price 24000"). Search by TOPIC, not by guessed numbers.
 - NEVER reference future dates. If you don't have data for a time period, say "data not available".
-- Every number/price/date in your report MUST come from a visited page. If unsure, omit it.
+- Every number/price/date in your report MUST come from a visited page's actual text. If unsure, OMIT it.
+- If search results don't contain enough data, write a SHORTER report. Do NOT pad with invented details.
 - Write in ONE language only (match the user's question language).
 - Do NOT repeat content. Write the report ONCE.
 
@@ -146,7 +148,7 @@ class ResearchContext:
             self.searched_queries.append(query)
 
     def add_visit(self, url: str, snippet: str):
-        self.visited_urls[url] = snippet[:500]
+        self.visited_urls[url] = snippet[:3000]
 
     def add_version(self, content: str, changes: str = ""):
         self.current_version += 1
@@ -328,14 +330,16 @@ class ResearchAgent:
                     emit({"type": "report", "version": context.current_version,
                           "content": report, "changes": "initial" if not is_iteration else "updated"})
                     return report
-                else:
-                    # 提取失败 (太短/纯思维链) → fallback 兜底
-                    report = self._build_fallback_report(question, context)
-                    report = self._verify_report(report, context, emit)
-                    context.add_version(report)
-                    emit({"type": "report", "version": context.current_version,
-                          "content": report, "changes": "initial" if not is_iteration else "updated"})
-                    return report
+                # 报告太短/空: 如果已有搜索数据, break 去走强制总结 (不走 fallback)
+                if context.visited_urls or len(context.searched_queries) >= 3:
+                    break
+                # 没有足够数据 → fallback 兜底
+                report = self._build_fallback_report(question, context)
+                report = self._verify_report(report, context, emit)
+                context.add_version(report)
+                emit({"type": "report", "version": context.current_version,
+                      "content": report, "changes": "initial" if not is_iteration else "updated"})
+                return report
 
             name, args = tool_call
             try:
@@ -364,6 +368,9 @@ class ResearchAgent:
                 model=self.model, messages=summary_messages,
                 max_tokens=10000, temperature=0.6, top_p=0.95,
                 presence_penalty=1.1,
+                # 强制总结是最后兜底: 关掉 thinking 确保 content 有输出
+                # (thinking 会把 max_tokens 花在 reasoning 上, 导致 content 空)
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
             msg = resp.choices[0].message
             content = msg.content or ""
@@ -507,7 +514,7 @@ class ResearchAgent:
         for q in context.searched_queries:
             parts.append(f"- Searched: {q}")
         for url, snippet in list(context.visited_urls.items())[:8]:
-            parts.append(f"- {url}:\n  {snippet[:500]}")
+            parts.append(f"- {url}:\n  {snippet[:1500]}")
 
         parts.append("\nWrite a comprehensive report answering the question. "
                       "Use markdown with headers and [source: URL] citations.")
