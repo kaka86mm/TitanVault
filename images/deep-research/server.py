@@ -413,32 +413,84 @@ async def export_report(sid: str, format: str = "md"):
 
 
 def _export_pdf(report: str, title: str):
-    """导出排版好的 HTML 报告, 带自动打印脚本 (浏览器另存为 PDF)。"""
-    md_html = _md_to_html(report)
-    full_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>{title}</title>
-<style>
-body {{ font-family: 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; max-width: 720px; margin: 0 auto; padding: 40px; line-height: 1.8; color: #1a1a1a; }}
-h1 {{ font-size: 24px; border-bottom: 2px solid #3b9eff; padding-bottom: 8px; }}
-h2 {{ font-size: 20px; margin-top: 28px; }}
-h3 {{ font-size: 16px; }}
-table {{ border-collapse: collapse; width: 100%; margin: 16px 0; }}
-th, td {{ border: 1px solid #ddd; padding: 8px 12px; text-align: left; }}
-th {{ background: #f5f5f5; }}
-blockquote {{ border-left: 3px solid #3b9eff; margin: 16px 0; padding: 8px 16px; color: #666; background: #f9f9f9; }}
-code {{ background: #f0f0f0; padding: 2px 6px; border-radius: 3px; }}
-pre {{ background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; }}
-a {{ color: #3b9eff; }}
-.toolbar {{ position: fixed; top: 16px; right: 16px; z-index: 999; }}
-.toolbar button {{ padding: 8px 16px; background: #3b9eff; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }}
-@media print {{ .toolbar {{ display: none; }} body {{ margin: 0; max-width: none; }} }}
-</style></head><body>
-<div class="toolbar"><button onclick="window.print()">📄 打印 / 另存为 PDF</button></div>
-{md_html}
-<script>setTimeout(function(){{window.print()}},800)</script>
-</body></html>"""
-    from fastapi.responses import HTMLResponse
-    return HTMLResponse(content=full_html)
+    """用 fpdf2 生成 PDF (支持中文)。"""
+    try:
+        from fpdf import FPDF
+        from io import BytesIO
+        import os, re as _re
+
+        # 找 CJK 字体 (优先 /tmp/font.ttc, 然后 glob)
+        font_path = "/tmp/font.ttc" if os.path.exists("/tmp/font.ttc") else None
+        if not font_path:
+            import glob
+            candidates = glob.glob("/usr/share/fonts/**/NotoSansCJK*", recursive=True) + \
+                         glob.glob("/usr/share/fonts/**/*.ttc", recursive=True)
+            font_path = candidates[0] if candidates else None
+        if not font_path:
+            raise FileNotFoundError("No CJK font found")
+        if not font_path:
+            raise FileNotFoundError("No CJK font found")
+
+        pdf = FPDF(orientation='P', unit='mm', format='A4')
+        pdf.add_page()
+        pdf.add_font("CJK", "", font_path)
+        pdf.set_font("CJK", size=11)
+        pdf.set_auto_page_break(auto=True, margin=20)
+        pdf.set_left_margin(20)
+        pdf.set_right_margin(20)
+
+        for line in report.split("\n"):
+            line = line.rstrip()
+            if not line:
+                pdf.ln(3)
+                continue
+            # 清理 markdown 格式
+            clean = _re.sub(r'\[([^\]]*)\]\([^\)]+\)', r'\1', line)
+            clean = _re.sub(r'\*\*([^*]+)\*\*', r'\1', clean)
+            clean = _re.sub(r'\*([^*]+)\*', r'\1', clean)
+            clean = _re.sub(r'`([^`]+)`', r'\1', clean)
+            clean = _re.sub(r'^#+\s*', '', clean)
+            clean = _re.sub(r'^>\s*', '', clean)
+            clean = _re.sub(r'^[-*]\s+', '• ', clean)
+            # 逐行渲染, 单行崩溃不影响整体
+            try:
+                if line.startswith("# "):
+                    pdf.set_font_size(16)
+                    pdf.multi_cell(0, 8, clean)
+                    pdf.ln(2)
+                    pdf.set_font_size(11)
+                elif line.startswith("## "):
+                    pdf.ln(2)
+                    pdf.set_font_size(13)
+                    pdf.multi_cell(0, 7, clean)
+                    pdf.ln(1)
+                    pdf.set_font_size(11)
+                elif line.startswith("### "):
+                    pdf.set_font_size(12)
+                    pdf.multi_cell(0, 6, clean)
+                    pdf.set_font_size(11)
+                else:
+                    pdf.multi_cell(0, 6, clean)
+            except Exception:
+                # 单行渲染失败 (超长无空格文本), 跳过继续
+                continue
+
+        buf = BytesIO()
+        pdf.output(buf)
+        buf.seek(0)
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(buf, media_type="application/pdf",
+                                 headers=_cd_header(title, "pdf"))
+    except Exception as e:
+        # fpdf 失败 → 降级为 HTML
+        import logging
+        logging.error(f"PDF export failed: {e}", exc_info=True)
+        md_html = _md_to_html(report)
+        full_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>{md_html}</body></html>"
+        from fastapi.responses import Response
+        return Response(content=full_html.encode("utf-8"),
+                        media_type="text/html",
+                        headers=_cd_header(title, "html"))
 
 
 def _export_docx(report: str, title: str):

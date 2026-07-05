@@ -4,6 +4,9 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+# 系统依赖: 中文字体 (PDF 导出需要)
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk && rm -rf /var/lib/apt/lists/*
+
 # 依赖
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
