@@ -328,12 +328,24 @@ class ResearchAgent:
             if not tool_call:
                 # 没工具调用 = 可能是最终报告
                 report = self._extract_report(reply)
-                # 检查是否真的是报告 (不是 tool call 残留)
-                # 报告必须有 markdown 标题 且 主体够长 (去掉验证段后)
-                report_body = re.split(r"##\s*📎\s*来源验证", report)[0]
-                is_real_report = (report.startswith("#") and len(report_body) >= 200
-                                  and "<|start|>" not in report
-                                  and "functions." not in report[:50])
+                report_body = re.split(r"##\s*📎\s*来源验证", report)[0].strip()
+                # 严格的报告验收标准:
+                # 1. 必须以 # 标题开头
+                # 2. 至少 3 个 ## 章节标题 (说明有结构)
+                # 3. 主体至少 500 字 (不是一句话)
+                # 4. 不能有 jinja/tool_call 残留
+                # 5. 必须有引用链接 [text](url) 或 [source: url]
+                n_sections = len(re.findall(r'^##\s+', report_body, re.MULTILINE))
+                has_citations = bool(re.search(r'\[([^\]]*)\]\(https?://', report_body)
+                                     or re.search(r'\[source:', report_body))
+                is_real_report = (
+                    report_body.startswith("#")
+                    and n_sections >= 3
+                    and len(report_body) >= 500
+                    and "<|start|>" not in report_body
+                    and "functions." not in report_body[:100]
+                    and "<tool_call>" not in report_body
+                )
                 if is_real_report:
                     report = self._verify_report(report, context, emit)
                     context.add_version(report)
