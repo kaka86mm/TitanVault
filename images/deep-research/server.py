@@ -413,9 +413,10 @@ async def export_report(sid: str, format: str = "md"):
 
 
 def _export_pdf(report: str, title: str):
-    """导出排版好的 HTML (浏览器打开可 Ctrl+P 另存为 PDF)。"""
+    """导出排版好的 HTML 报告, 带自动打印脚本 (浏览器另存为 PDF)。"""
     md_html = _md_to_html(report)
     full_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>{title}</title>
 <style>
 body {{ font-family: 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; max-width: 720px; margin: 0 auto; padding: 40px; line-height: 1.8; color: #1a1a1a; }}
 h1 {{ font-size: 24px; border-bottom: 2px solid #3b9eff; padding-bottom: 8px; }}
@@ -428,12 +429,16 @@ blockquote {{ border-left: 3px solid #3b9eff; margin: 16px 0; padding: 8px 16px;
 code {{ background: #f0f0f0; padding: 2px 6px; border-radius: 3px; }}
 pre {{ background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; }}
 a {{ color: #3b9eff; }}
-@media print {{ body {{ margin: 0; max-width: none; }} }}
-</style></head><body>{md_html}</body></html>"""
-    from fastapi.responses import Response
-    return Response(content=full_html.encode("utf-8"),
-                    media_type="text/html",
-                    headers=_cd_header(title, "html"))
+.toolbar {{ position: fixed; top: 16px; right: 16px; z-index: 999; }}
+.toolbar button {{ padding: 8px 16px; background: #3b9eff; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }}
+@media print {{ .toolbar {{ display: none; }} body {{ margin: 0; max-width: none; }} }}
+</style></head><body>
+<div class="toolbar"><button onclick="window.print()">📄 打印 / 另存为 PDF</button></div>
+{md_html}
+<script>setTimeout(function(){{window.print()}},800)</script>
+</body></html>"""
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=full_html)
 
 
 def _export_docx(report: str, title: str):

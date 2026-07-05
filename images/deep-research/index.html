@@ -764,8 +764,14 @@ document.addEventListener('click', (e) => {
 function exportReport(format) {
   document.getElementById('exportMenu').classList.add('hidden');
   if (!currentSession) return;
-  // 直接调用后端导出 API, 浏览器自动下载
-  window.location.href = BASE + `api/sessions/${currentSession}/export?format=${format}`;
+  const url = BASE + `api/sessions/${currentSession}/export?format=${format}`;
+  if (format === 'pdf') {
+    // PDF: 新窗口打开排版好的报告, 自动弹出打印对话框
+    window.open(url, '_blank');
+  } else {
+    // MD/DOCX: 直接下载
+    window.location.href = url;
+  }
 }
 
 // ── Markdown renderer (轻量, 防 XSS) ──

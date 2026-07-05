@@ -653,6 +653,18 @@ class ResearchAgent:
         else:
             emit({"type": "search_done", "query": question, "count": 0,
                   "engine": "searxng", "auto": True})
+        # 微信公众号搜索 (中文问题默认纳入, 补充深度行业分析)
+        if any('\u4e00' <= c <= '\u9fff' for c in question):
+            emit({"type": "search", "query": question[:60], "engine": "wechat", "auto": True})
+            r_wx = tool_wechat(question[:60])
+            context.add_search(f"wechat:{question[:60]}")
+            if r_wx.get("results"):
+                results.append("## 微信公众号文章\n" + self._format_search_results(r_wx))
+                emit({"type": "search_done", "query": question[:60],
+                      "count": len(r_wx["results"]), "engine": "wechat", "auto": True})
+            else:
+                emit({"type": "search_done", "query": question[:60], "count": 0,
+                      "engine": "wechat", "auto": True})
         # 最新动态搜索: 加 "最新/latest/2026" 关键词, 确保覆盖到当前月份
         today = datetime.now()
         recent_q = f"{question[:40]} 最新 {today.year}年{today.month}月"
