@@ -332,17 +332,16 @@ class ResearchAgent:
                 # 严格的报告验收标准
                 n_sections = len(re.findall(r'^##\s+', report_body, re.MULTILINE))
                 # 垃圾内容检测: JS代码/HTML标签/网页噪音/重复内容
+                bare_urls_count = len(re.findall(r'https?://', report_body))
                 has_junk = bool(
                     "</string>" in report_body
                     or "console.error" in report_body
                     or "catch (error)" in report_body
                     or report_body.count("相关网址") > 3
-                    or report_body.count("https://") > 50  # URL列表不是报告
+                    or bare_urls_count > 30  # URL列表不是报告
                     or "<|start|>" in report_body
                     or "<tool_call>" in report_body
                     or "functions." in report_body[:100]
-                    # 检测重复段落 (同一句子重复5+次)
-                    or len(re.findall(r'report_body', report_body)) > 0  # placeholder
                 )
                 # 检测高度重复 (同一个100字符块出现3+次 = 网页噪音/循环输出)
                 if not has_junk and len(report_body) > 500:
@@ -447,14 +446,15 @@ class ResearchAgent:
         """
         emit({"type": "verify_start"})
 
-        # 1. 提取报告中所有引用 URL (markdown 链接)
+        # 1. 提取报告中所有引用 URL (markdown 链接 + 裸 URL)
         md_urls = re.findall(r'\[[^\]]*\]\((https?://[^\)]+)\)', report)
-        cited_urls = list(dict.fromkeys(md_urls))  # 去重保序
+        bare_urls = re.findall(r'(?<![\(\"])(https?://[^\s\)\]\}]+)', report)
+        all_urls = list(dict.fromkeys(md_urls + bare_urls))  # 合并去重保序
 
         # 2. 检查引用 URL 可达性 (最多检查 5 个)
         reachable = 0
         unreachable_urls = []
-        for url in cited_urls[:5]:
+        for url in all_urls[:5]:
             emit({"type": "verify", "claim": url[:60]})
             try:
                 check = tool_verify_url(url)
@@ -470,14 +470,15 @@ class ResearchAgent:
                 emit({"type": "verify_done", "claim": url[:60],
                       "status": "unverified"})
 
-        # 3. 统计含数字句子中有引用的比例
+        # 3. 统计含数字句子中有引用的比例 (markdown链接 或 裸URL)
         sentences_with_numbers = re.findall(r'[^\n.。!！?？]*\d+[^\n.。!！?？]*', report)
-        cited_sentences = [s for s in sentences_with_numbers if re.search(r'\]\(https?://', s)]
+        cited_sentences = [s for s in sentences_with_numbers
+                          if re.search(r'\]\(https?://', s) or re.search(r'https?://', s)]
         citation_rate = len(cited_sentences) / max(len(sentences_with_numbers), 1)
 
         # 4. 构造可信度摘要
-        total_cited = len(cited_urls)
-        checked = min(len(cited_urls), 5)
+        total_cited = len(all_urls)
+        checked = min(len(all_urls), 5)
         if total_cited == 0:
             trust_level = "⚠️ 无引用"
             trust_color = "⚠️"
@@ -499,9 +500,9 @@ class ResearchAgent:
             f"{int(citation_rate*100)}% 的数据句有引用。\n",
         ]
 
-        if cited_urls:
+        if all_urls:
             summary_lines.append("**引用来源:**")
-            for i, url in enumerate(cited_urls[:10], 1):
+            for i, url in enumerate(all_urls[:10], 1):
                 domain = re.search(r'https?://([^/]+)', url)
                 domain_name = domain.group(1) if domain else url[:30]
                 summary_lines.append(f"{i}. [{domain_name}]({url})")
