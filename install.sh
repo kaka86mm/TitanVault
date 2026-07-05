@@ -345,28 +345,27 @@ phase2_gpu() {
     load_env
     . "$REPO_DIR/hardware/aimax-395.profile"
 
-    # Swap: 扩到 100G (ComfyUI/大模型推理需要大 swap, 默认 8G 必崩)
-    # 检查当前 swap 总量, 不足 90G 则创建/扩容 swap 文件
+    # Swap: 配置 100G (大模型推理需要大 swap, 默认 8G 不够)
+    # 直接替换 /swap.img 为 100G, 确保 swap 总量达标
     local swap_total_kb=$(awk '/SwapTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
-    if [ "${swap_total_kb:-0}" -lt 94371840 ]; then  # 90G = 94371840 kB
-        log "配置 swap (目标 100G, 当前 $(awk '/SwapTotal/{printf "%.0fG", $2/1048576}' /proc/meminfo 2>/dev/null || echo "?"))..."
-        # 创建 swap2 文件补到 100G (不破坏已有 swap)
-        local swap2="/swap2.img"
-        if ! swapon --show=name 2>/dev/null | grep -q "$swap2"; then
-            local need_gb=100
-            local have_gb=$((swap_total_kb / 1048576))
-            local add_gb=$((need_gb - have_gb))
-            [ "$add_gb" -gt 0 ] || add_gb=100
-            log "  创建 ${swap2} (${add_gb}G)..."
-            sudo fallocate -l "${add_gb}G" "$swap2" || sudo dd if=/dev/zero of="$swap2" bs=1G count="$add_gb"
-            sudo chmod 600 "$swap2"
-            sudo mkswap "$swap2"
-            sudo swapon "$swap2"
-            # fstab 持久化
-            grep -q "$swap2" /etc/fstab || echo "$swap2 none swap sw 0 0" | sudo tee -a /etc/fstab
-            log "  ✅ swap 已扩容到 $(awk '/SwapTotal/{printf "%.0fG", $2/1048576}' /proc/meminfo)"
-        fi
+    if [ "${swap_total_kb:-0}" -lt 94371840 ]; then  # 不足 90G 则重建
+        log "配置 swap 100G (当前 $(awk '/SwapTotal/{printf "%.0fG", $2/1048576}' /proc/meminfo 2>/dev/null || echo "?"))..."
+        # 关闭并删除旧 swap 文件
+        for sf in /swap.img /swap2.img; do
+            swapon --show=name 2>/dev/null | grep -q "$sf" && sudo swapoff "$sf"
+            [ -f "$sf" ] && sudo rm -f "$sf"
+        done
+        # 创建 100G swap
+        sudo fallocate -l 100G /swap.img || sudo dd if=/dev/zero of=/swap.img bs=1G count=100
+        sudo chmod 600 /swap.img
+        sudo mkswap /swap.img
+        sudo swapon /swap.img
+        # fstab 持久化 (清理旧条目, 确保只有一条)
+        sudo sed -i '/swap/d' /etc/fstab
+        echo "/swap.img none swap sw 0 0" | sudo tee -a /etc/fstab
+        log "  ✅ swap 已配置为 100G ($(awk '/SwapTotal/{printf "%.0fG", $2/1048576}' /proc/meminfo))"
     fi
+
 
     # GRUB 内核参数
     if ! grep -q "amdgpu.gtt_size" /etc/default/grub 2>/dev/null; then
