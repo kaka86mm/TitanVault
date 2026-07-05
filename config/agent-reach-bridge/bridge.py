@@ -84,6 +84,21 @@ async def xiaohongshu_search(req: SearchReq):
             "error": r["stderr"][:300] if not r["ok"] else ""}
 
 
+@app.post("/wechat")
+async def wechat_search(req: SearchReq):
+    """微信公众号文章搜索 (weixin_search_mcp, :8809)。
+
+    返回 JSON: [{title, real_url, publish_time}]
+    real_url 是 mp.weixin.qq.com 真实链接 (已从搜狗跳转链接转换)。
+    """
+    cmd = [MCPORTER, "call",
+           f'weixin.weixin_search(query: "{req.query}")',
+           "--timeout", "30000"]
+    r = _run(cmd, timeout=40)
+    return {"ok": r["ok"], "raw": r["stdout"][:20000],
+            "error": r["stderr"][:300] if not r["ok"] else ""}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}

@@ -69,6 +69,45 @@ def search(query: str, skip_queries: list = None) -> dict:
     return {"query": query, "results": results}
 
 
+def wechat_search(query: str) -> dict:
+    """微信公众号文章搜索 (weixin_search_mcp via bridge)。
+    返回 {"query", "results": [{"title","url","snippet"}]}, url 是 mp.weixin.qq.com 真实链接。
+    """
+    try:
+        resp = requests.post(
+            f"{REACH_BRIDGE_URL}/wechat",
+            json={"query": query},
+            timeout=40, proxies=None,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return {"query": query, "results": [], "error": f"WeChat bridge: {e}"}
+
+    if not data.get("ok"):
+        return {"query": query, "results": [],
+                "error": data.get("error", "weixin_search failed")}
+
+    # bridge 返回 mcporter JSON: {"result": [{title, real_url, publish_time}, ...]}
+    import json as _json
+    try:
+        parsed = _json.loads(data.get("raw", ""))
+        items = parsed.get("result", [])
+    except (_json.JSONDecodeError, TypeError):
+        items = []
+
+    results = []
+    for item in items[:10]:
+        title = item.get("title", "")
+        url = item.get("real_url", "") or item.get("link", "")
+        results.append({
+            "title": title[:120],
+            "url": url,
+            "snippet": title[:200],  # 微信搜索无摘要, 用标题
+        })
+    return {"query": query, "results": results, "source": "wechat"}
+
+
 def exa_search(query: str, num: int = 5) -> dict:
     """Exa 语义搜索 (agent-reach)。擅长英文/技术/代码, 返回高质量结果+高亮。
     通过宿主 agent-reach-bridge 调用 mcporter → Exa MCP。

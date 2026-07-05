@@ -19,7 +19,7 @@ from openai import OpenAI
 
 from tools import search as tool_search, visit as tool_visit, \
     exa_search as tool_exa, twitter_search as tool_twitter, \
-    xiaohongshu_search as tool_xhs, \
+    xiaohongshu_search as tool_xhs, wechat_search as tool_wechat, \
     verify_claim as tool_verify_claim, verify_url as tool_verify_url
 
 # ============================================================================
@@ -33,6 +33,7 @@ INITIAL_PROMPT = """You are QUEST, a deep research agent. Today's date: {today}.
 - search: Web search (google/bing). Same format, name="search".
 - twitter: Twitter/X discussions & opinions. name="twitter".
 - xiaohongshu: 小红书 Chinese lifestyle reviews. name="xiaohongshu".
+- wechat: 微信公众号文章 (Chinese in-depth analysis/industry opinions). name="wechat".
 - visit: Read a URL. {{"name":"visit","arguments":{{"url":["URL"],"goal":"..."}}}}
 
 ## Research Strategy (CRITICAL — follow strictly)
@@ -671,6 +672,18 @@ class ResearchAgent:
                 emit({"type": "search_done", "query": tw_q, "count": 0,
                       "engine": "xiaohongshu", "auto": True,
                       "error": r4.get("error", "")})
+            # 微信公众号 (中文深度分析/行业观点)
+            emit({"type": "search", "query": tw_q, "engine": "wechat", "auto": True})
+            r5 = tool_wechat(tw_q)
+            context.add_search(f"wechat:{tw_q}")
+            if r5.get("results"):
+                results.append("## 微信公众号文章\n" + self._format_search_results(r5))
+                emit({"type": "search_done", "query": tw_q,
+                      "count": len(r5["results"]), "engine": "wechat", "auto": True})
+            else:
+                emit({"type": "search_done", "query": tw_q, "count": 0,
+                      "engine": "wechat", "auto": True,
+                      "error": r5.get("error", "")})
 
         return "\n\n".join(results) if results else ""
 
@@ -774,6 +787,25 @@ class ResearchAgent:
                     emit({"type": "search_done", "query": q, "count": 0,
                           "engine": "xiaohongshu", "error": r.get("error", "")})
             return "\n\n".join(all_results) if all_results else "[小红书: no results or not logged in]"
+
+        elif name == "wechat":
+            # 微信公众号文章搜索 (中文深度分析/行业观点)
+            queries = args.get("query", [])
+            if isinstance(queries, str):
+                queries = [queries]
+            all_results = []
+            for q in queries[:2]:
+                emit({"type": "search", "query": q, "engine": "wechat"})
+                r = tool_wechat(q)
+                context.add_search(f"wechat:{q}")
+                if r.get("results"):
+                    all_results.append(self._format_search_results(r))
+                    emit({"type": "search_done", "query": q,
+                          "count": len(r["results"]), "engine": "wechat"})
+                else:
+                    emit({"type": "search_done", "query": q, "count": 0,
+                          "engine": "wechat", "error": r.get("error", "")})
+            return "\n\n".join(all_results) if all_results else "[微信: no results]"
 
         return f"[Unknown tool: {name}]"
 
