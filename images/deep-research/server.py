@@ -374,6 +374,165 @@ async def ingest_report(req: IngestRequest):
             return {"status": "error", "message": str(e)}
 
 
+def _cd_header(title: str, ext: str) -> dict:
+    """生成 Content-Disposition header (支持中文文件名)。"""
+    from urllib.parse import quote
+    safe = quote(f"{title}.{ext}")
+    return {"Content-Disposition": f"attachment; filename*=UTF-8''{safe}"}
+
+
+# ============================================================================
+# 报告导出
+# ============================================================================
+
+@app.get("/api/sessions/{sid}/export")
+async def export_report(sid: str, format: str = "md"):
+    """导出研究报告为 Markdown / PDF / DOCX。"""
+    ctx = sessions.get(sid)
+    if not ctx:
+        raise HTTPException(404, "Session not found")
+    if not ctx.versions:
+        raise HTTPException(404, "No report available")
+
+    report = ctx.versions[-1].get("content", "")
+    title = ctx.messages[0]["content"][:50] if ctx.messages else "Research Report"
+
+    if format == "md":
+        from fastapi.responses import Response
+        return Response(content=report.encode("utf-8"),
+                        media_type="text/markdown",
+                        headers=_cd_header(title, "md"))
+
+    elif format == "pdf":
+        return _export_pdf(report, title)
+
+    elif format == "docx":
+        return _export_docx(report, title)
+
+    raise HTTPException(400, f"Unsupported format: {format}")
+
+
+def _export_pdf(report: str, title: str):
+    """导出排版好的 HTML (浏览器打开可 Ctrl+P 另存为 PDF)。"""
+    md_html = _md_to_html(report)
+    full_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+body {{ font-family: 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; max-width: 720px; margin: 0 auto; padding: 40px; line-height: 1.8; color: #1a1a1a; }}
+h1 {{ font-size: 24px; border-bottom: 2px solid #3b9eff; padding-bottom: 8px; }}
+h2 {{ font-size: 20px; margin-top: 28px; }}
+h3 {{ font-size: 16px; }}
+table {{ border-collapse: collapse; width: 100%; margin: 16px 0; }}
+th, td {{ border: 1px solid #ddd; padding: 8px 12px; text-align: left; }}
+th {{ background: #f5f5f5; }}
+blockquote {{ border-left: 3px solid #3b9eff; margin: 16px 0; padding: 8px 16px; color: #666; background: #f9f9f9; }}
+code {{ background: #f0f0f0; padding: 2px 6px; border-radius: 3px; }}
+pre {{ background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; }}
+a {{ color: #3b9eff; }}
+@media print {{ body {{ margin: 0; max-width: none; }} }}
+</style></head><body>{md_html}</body></html>"""
+    from fastapi.responses import Response
+    return Response(content=full_html.encode("utf-8"),
+                    media_type="text/html",
+                    headers=_cd_header(title, "html"))
+
+
+def _export_docx(report: str, title: str):
+    """用 python-docx 生成 Word 文档。"""
+    try:
+        from docx import Document
+        from io import BytesIO
+        import re as _re
+
+        doc = Document()
+        doc.core_properties.title = title
+        _table_ref = [None]
+
+        for line in report.split("\n"):
+            line = line.rstrip()
+            if not line:
+                continue
+            if line.startswith("# "):
+                doc.add_heading(line[2:].strip(), level=1)
+            elif line.startswith("## "):
+                doc.add_heading(line[3:].strip(), level=2)
+            elif line.startswith("### "):
+                doc.add_heading(line[4:].strip(), level=3)
+            elif line.strip().startswith("|") and "|" in line.strip()[1:]:
+                cells = [c.strip() for c in line.strip().strip("|").split("|")]
+                if all(_re.match(r'^[-:]+$', c) for c in cells):
+                    continue
+                if _table_ref[0] is None:
+                    _table_ref[0] = doc.add_table(rows=0, cols=len(cells))
+                    _table_ref[0].style = 'Table Grid'
+                row = _table_ref[0].add_row()
+                for i, cell in enumerate(cells):
+                    if i < len(row.cells):
+                        clean = _re.sub(r'\[([^\]]*)\]\([^\)]+\)', r'\1', cell)
+                        row.cells[i].text = clean
+            elif line.startswith("> "):
+                doc.add_paragraph(line[2:].strip())
+            elif line.startswith("- ") or line.startswith("* "):
+                doc.add_paragraph(line[2:].strip(), style='List Bullet')
+            else:
+                clean = _re.sub(r'\[([^\]]*)\]\([^\)]+\)', r'\1', line)
+                clean = _re.sub(r'\*\*([^*]+)\*\*', r'\1', clean)
+                clean = _re.sub(r'`([^`]+)`', r'\1', clean)
+                doc.add_paragraph(clean)
+
+        buf = BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(buf,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=_cd_header(title, "docx"))
+    except ImportError:
+        raise HTTPException(500, "python-docx not installed")
+
+
+def _md_to_html(md: str) -> str:
+    """简单 markdown → HTML。"""
+    import html as _html
+    import re as _re
+    lines = md.split("\n")
+    out = []
+    in_table = False
+    in_code = False
+    for line in lines:
+        if line.strip().startswith("```"):
+            out.append("</code></pre>" if in_code else "<pre><code>")
+            in_code = not in_code
+            continue
+        if in_code:
+            out.append(_html.escape(line))
+            continue
+        line = _html.escape(line)
+        if line.strip().startswith("|") and "|" in line.strip()[1:]:
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if all(_re.match(r'^[-:]+$', c) for c in cells):
+                continue
+            tag = "th" if not in_table else "td"
+            if not in_table:
+                out.append("<table>"); in_table = True
+            out.append("<tr>" + "".join(f"<{tag}>{c}</{tag}>" for c in cells) + "</tr>")
+            continue
+        elif in_table:
+            out.append("</table>"); in_table = False
+        if line.startswith("### "): out.append(f"<h3>{line[4:]}</h3>")
+        elif line.startswith("## "): out.append(f"<h2>{line[3:]}</h2>")
+        elif line.startswith("# "): out.append(f"<h1>{line[2:]}</h1>")
+        elif line.startswith("> "): out.append(f"<blockquote>{line[2:]}</blockquote>")
+        elif line.startswith("- ") or line.startswith("* "): out.append(f"<li>{line[2:]}</li>")
+        elif line.strip() == "---": out.append("<hr>")
+        elif line.strip():
+            line = _re.sub(r'\[([^\]]*)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', line)
+            line = _re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', line)
+            line = _re.sub(r'`([^`]+)`', r'<code>\1</code>', line)
+            out.append(f"<p>{line}</p>")
+    if in_table: out.append("</table>")
+    return "\n".join(out)
+
+
 # ============================================================================
 # 定时研究
 # ============================================================================
