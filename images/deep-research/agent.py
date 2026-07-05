@@ -53,21 +53,33 @@ INITIAL_PROMPT = """You are QUEST, a deep research agent. Today's date: {today}.
 - Write in ONE language only (match the user's question language).
 - Do NOT repeat content. Write the report ONCE.
 
-## Report Format
+## Report Format (write a THOROUGH report — use ALL gathered data)
 ```
 # [Title]
 
 > **Summary**: 2-3 sentence overview.
 
 ## 1. [Section]
-[Detailed analysis with data from search results, cited with [source: URL]]
+[Detailed analysis. EVERY data point must have [source: URL]. Use data from MULTIPLE pages.]
+
+## 2. [Another Section with different angle/perspective]
+...
 
 ## N. Conclusion
+
+## References
+[List ALL source URLs you used, numbered]
+1. [source URL 1]
+2. [source URL 2]
+...
 ```
 
-## Citation Rules
-- Use [source: URL] at the END of sentences with data.
-- Every key fact MUST have a citation from a page you visited.
+## Citation Rules (CRITICAL — report will be rejected if citations are missing)
+- EVERY number, price, date, statistic MUST have [source: URL] inline.
+- Example: Token usage grew 70% [source: https://...]
+- Aim for 8+ different source URLs cited in the report.
+- Include a References section at the END listing all sources.
+- Do NOT write data without a source. If you only have 3 sources, write a shorter report.
 
 When you have enough info, STOP calling tools and write the report ONCE."""
 
@@ -825,11 +837,13 @@ class ResearchAgent:
         4. 找第一个 markdown 标题作为报告起点
         5. 去重 (QUEST 可能中英文各输出一遍)
         """
-        # 1. 各种标记块
-        for tag in ["tool_call", "think", "tool_response", "note"]:
+        # 1. 各种标记块 (保留 References/引用内容)
+        for tag in ["tool_call", "think", "tool_response"]:
             text = re.sub(r"<%s>.*?</%s>" % (tag, tag), "", text, flags=re.DOTALL)
             text = re.sub(r"<%s>.*" % tag, "", text, flags=re.DOTALL)
-            text = re.sub(r"</%s>" % tag, "", text)
+        # note/related_urls 只去标签本身, 保留内容 (可能含引用链接)
+        for tag in ["note", "related_urls"]:
+            text = re.sub(r"</?%s>" % tag, "", text)
         # 2. 搜索结果块
         text = re.sub(r"^##\s*Search Results?:.*?(?=^##\s|\Z)", "", text,
                       flags=re.DOTALL | re.MULTILINE)
