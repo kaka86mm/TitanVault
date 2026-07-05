@@ -157,8 +157,13 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
 .report-area .md td { color: var(--fg-2); }
 .report-area .md tr:nth-child(even) td { background: var(--surface); }
 .report-area .md h4 { font-size: var(--text-base); margin: var(--space-3) 0 var(--space-1); font-weight: 600; color: var(--fg-2); }
-.report-area .md ol { margin: var(--space-2) 0 var(--space-3) var(--space-5); color: var(--fg-2); font-size: 16px; line-height: 1.7; }
+.report-area .md ol { margin: var(--space-2) 0 var(--space-3) var(--space-5); color: var(--fg-2); font-size: 14px; line-height: 1.8; padding-left: var(--space-4); }
+.report-area .md ol li { margin-bottom: var(--space-1); }
+.report-area .md ol li a { font-family: var(--font-mono); font-size: 13px; word-break: break-all; }
 .report-area .empty { color: var(--fg-muted); text-align: center; padding: var(--space-8); }
+/* 来源验证段 */
+.report-area .md h2 { margin-top: var(--space-6); }
+.report-area .md blockquote { font-size: 14px; margin: var(--space-3) 0; }
 
 /* 对话抽屉 (右侧浮动, 收起时只显示 FAB 按钮) */
 .chat-drawer { position: absolute; top: 0; right: 0; bottom: 0; z-index: 50;
