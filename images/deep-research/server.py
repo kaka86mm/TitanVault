@@ -413,76 +413,66 @@ async def export_report(sid: str, format: str = "md"):
 
 
 def _export_pdf(report: str, title: str):
-    """用 fpdf2 生成 PDF (支持中文)。"""
+    """用 reportlab 生成 PDF (内置 CID 中文字体 STSong-Light)。"""
     try:
-        from fpdf import FPDF
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        from reportlab.pdfbase import pdfmetrics
         from io import BytesIO
-        import os, re as _re
+        import re as _re
+        from xml.sax.saxutils import escape as _xml_escape
 
-        # 找 CJK 字体 (优先 /tmp/font.ttc, 然后 glob)
-        font_path = "/tmp/font.ttc" if os.path.exists("/tmp/font.ttc") else None
-        if not font_path:
-            import glob
-            candidates = glob.glob("/usr/share/fonts/**/NotoSansCJK*", recursive=True) + \
-                         glob.glob("/usr/share/fonts/**/*.ttc", recursive=True)
-            font_path = candidates[0] if candidates else None
-        if not font_path:
-            raise FileNotFoundError("No CJK font found")
-        if not font_path:
-            raise FileNotFoundError("No CJK font found")
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
 
-        pdf = FPDF(orientation='P', unit='mm', format='A4')
-        pdf.add_page()
-        pdf.add_font("CJK", "", font_path)
-        pdf.set_font("CJK", size=11)
-        pdf.set_auto_page_break(auto=True, margin=20)
-        pdf.set_left_margin(20)
-        pdf.set_right_margin(20)
+        buf = BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4,
+                                leftMargin=20*mm, rightMargin=20*mm,
+                                topMargin=20*mm, bottomMargin=20*mm)
+        h1 = ParagraphStyle("H1", fontName="STSong-Light", fontSize=18, leading=26, spaceAfter=12, spaceBefore=18)
+        h2 = ParagraphStyle("H2", fontName="STSong-Light", fontSize=14, leading=20, spaceAfter=8, spaceBefore=16)
+        h3 = ParagraphStyle("H3", fontName="STSong-Light", fontSize=12, leading=18, spaceAfter=6, spaceBefore=12)
+        body = ParagraphStyle("Body", fontName="STSong-Light", fontSize=10.5, leading=17, spaceAfter=4)
+        quote = ParagraphStyle("Quote", fontName="STSong-Light", fontSize=9.5, leading=15, leftIndent=15, textColor="#666666")
 
+        story = []
         for line in report.split("\n"):
             line = line.rstrip()
             if not line:
-                pdf.ln(3)
+                story.append(Spacer(1, 4))
                 continue
-            # 清理 markdown 格式
-            clean = _re.sub(r'\[([^\]]*)\]\([^\)]+\)', r'\1', line)
-            clean = _re.sub(r'\*\*([^*]+)\*\*', r'\1', clean)
-            clean = _re.sub(r'\*([^*]+)\*', r'\1', clean)
-            clean = _re.sub(r'`([^`]+)`', r'\1', clean)
+            is_h1 = line.startswith("# ")
+            is_h2 = line.startswith("## ")
+            is_h3 = line.startswith("### ")
+            is_quote = line.startswith("> ")
+            # 清理 markdown → reportlab XML
+            clean = _re.sub(r'\[([^\]]*)\]\(([^\)]+)\)', r'<a href="\2" color="#3b9eff">\1</a>', line)
+            clean = _re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', clean)
             clean = _re.sub(r'^#+\s*', '', clean)
             clean = _re.sub(r'^>\s*', '', clean)
-            clean = _re.sub(r'^[-*]\s+', '• ', clean)
-            # 逐行渲染, 单行崩溃不影响整体
-            try:
-                if line.startswith("# "):
-                    pdf.set_font_size(16)
-                    pdf.multi_cell(0, 8, clean)
-                    pdf.ln(2)
-                    pdf.set_font_size(11)
-                elif line.startswith("## "):
-                    pdf.ln(2)
-                    pdf.set_font_size(13)
-                    pdf.multi_cell(0, 7, clean)
-                    pdf.ln(1)
-                    pdf.set_font_size(11)
-                elif line.startswith("### "):
-                    pdf.set_font_size(12)
-                    pdf.multi_cell(0, 6, clean)
-                    pdf.set_font_size(11)
-                else:
-                    pdf.multi_cell(0, 6, clean)
-            except Exception:
-                # 单行渲染失败 (超长无空格文本), 跳过继续
+            clean = _re.sub(r'^[-*]\s+', '- ', clean)
+            # escape & < > 但保留已生成的 XML 标签
+            clean = _re.sub(r'&(?!amp;|lt;|gt;|quot;|#)', '&amp;', clean)
+            if not clean.strip():
                 continue
+            try:
+                if is_h1: story.append(Paragraph(clean, h1))
+                elif is_h2: story.append(Paragraph(clean, h2))
+                elif is_h3: story.append(Paragraph(clean, h3))
+                elif is_quote: story.append(Paragraph(clean, quote))
+                else: story.append(Paragraph(clean, body))
+            except Exception:
+                try: story.append(Paragraph(_xml_escape(clean), body))
+                except Exception: continue
 
-        buf = BytesIO()
-        pdf.output(buf)
+        doc.build(story)
         buf.seek(0)
         from fastapi.responses import StreamingResponse
         return StreamingResponse(buf, media_type="application/pdf",
                                  headers=_cd_header(title, "pdf"))
     except Exception as e:
-        # fpdf 失败 → 降级为 HTML
         import logging
         logging.error(f"PDF export failed: {e}", exc_info=True)
         md_html = _md_to_html(report)
