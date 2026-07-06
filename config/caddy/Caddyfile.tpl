@@ -42,9 +42,9 @@
 	redir /go/design      http://{host}:7456 permanent
 	redir /go/draw        http://{host}:4733 permanent
 
-	# Deep Research (QUEST-9B 深度研究 web 应用)
+	# Fast Research (QUEST-9B 深度研究 web 应用)
 	handle_path /research/* {
-		reverse_proxy deep-research:8099
+		reverse_proxy fast-research:8099
 	}
 
 	# MetacubeXd — mihomo 代理管理面板 (Nuxt/Nitro server)

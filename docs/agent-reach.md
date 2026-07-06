@@ -1,14 +1,14 @@
 # Agent Reach — AI Agent 互联网能力层
 
 [Agent Reach](https://github.com/Panniantong/Agent-Reach) 给 AI agent 装上读推特/Reddit/YouTube/小红书/B站等 15 个平台的能力。
-本工作站通过 mihomo 代理访问国外平台,deep-research 集成了 Jina Reader 作为网页阅读后端。
+本工作站通过 mihomo 代理访问国外平台,fast-research 集成了 Jina Reader 作为网页阅读后端。
 
 ## 已安装渠道
 
 | 渠道 | 后端 | 状态 | 说明 |
 |------|------|------|------|
 | 全网语义搜索 | Exa (mcporter) | ✅ 可用 | 免费,无需 API key |
-| 任意网页 | Jina Reader | ✅ 可用 | deep-research 已集成 (JS 渲染页面) |
+| 任意网页 | Jina Reader | ✅ 可用 | fast-research 已集成 (JS 渲染页面) |
 | YouTube | yt-dlp | ✅ 可用 | 视频信息+字幕 |
 | V2EX | 公开 API | ✅ 可用 | 节点/主题/回复 |
 | RSS/Atom | feedparser | ✅ 可用 | 订阅源 |
@@ -88,15 +88,15 @@ mcporter call 'xiaohongshu.get_login_qrcode()' --timeout 120000
 > SSH 远程扫码不便时:在本地电脑跑 xiaohongshu-login 登录后,
 > 把生成的 `cookies.json` 复制到 `/data/xhs-mcp/cookies.json`,重启服务即可。
 
-## deep-research 集成
+## fast-research 集成
 
-deep-research 已集成 **Jina Reader** (任意网页渠道):
+fast-research 已集成 **Jina Reader** (任意网页渠道):
 - JS 重度站点 (twitter/reddit/medium/zhihu/b站) → 直接走 Jina Reader
 - 普通站点 trafilatura 失败 → fallback Jina Reader
 - visit/verify_url 走 mihomo 代理访问国外页面
 
 Exa/Twitter/小红书 作为 agent-reach skill 能力,供 **Hermes agent** (宿主直接跑) 使用。
-deep-research 不直接集成它们 (需 MCP 桥接, 边际价值低于 SearXNG+Jina 组合)。
+fast-research 不直接集成它们 (需 MCP 桥接, 边际价值低于 SearXNG+Jina 组合)。
 
 ## 代理
 

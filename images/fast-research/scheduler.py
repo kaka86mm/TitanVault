@@ -1,7 +1,7 @@
 """
 scheduler.py — 定时研究调度器 (APScheduler)
 
-功能: 按间隔自动跑 deep research agent, 生成报告。
+功能: 按间隔自动跑 fast research agent, 生成报告。
 间隔选项: 每日(24h) / 每周(168h) / 每12h / 每6h / 自定义N小时
 
 持久化: APScheduler jobstore → SQLite

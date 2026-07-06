@@ -1,4 +1,4 @@
-# Deep Research Web 应用 — QUEST-9B 驱动的深度研究
+# Fast Research Web 应用 — QUEST-9B 驱动的深度研究
 # FastAPI 后端 + 纯 HTML 前端, dashboard 风格
 FROM python:3.10-slim
 

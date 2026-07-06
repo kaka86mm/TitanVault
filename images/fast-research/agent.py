@@ -1,5 +1,5 @@
 """
-agent.py — Deep Research Agent (ReAct 循环 + 报告迭代)
+agent.py — Fast Research Agent (ReAct 循环 + 报告迭代)
 
 核心特性:
 1. ReAct 循环: LLM → 解析 tool_call → 执行 search/visit → 回填 → 循环

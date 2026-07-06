@@ -1,5 +1,5 @@
 """
-server.py — Deep Research FastAPI 服务
+server.py — Fast Research FastAPI 服务
 
 端点:
   POST   /api/sessions               新建研究 session
@@ -48,7 +48,7 @@ MAX_TURNS = int(os.environ.get("MAX_TURNS", "5"))
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="TitanVault Deep Research", version="1.0.0")
+app = FastAPI(title="TitanVault Fast Research", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
 

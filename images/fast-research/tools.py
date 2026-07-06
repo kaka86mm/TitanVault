@@ -1,5 +1,5 @@
 """
-tools.py — Deep Research 工具集 (SearXNG 搜索 + 网页阅读)
+tools.py — Fast Research 工具集 (SearXNG 搜索 + 网页阅读)
 
 本地化实现, 无外部付费 API。
 - search: SearXNG 元搜索引擎

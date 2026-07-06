@@ -1,5 +1,5 @@
 """
-agent-reach-bridge — HTTP 桥接服务, 让 deep-research 容器调用宿主的 agent-reach 能力。
+agent-reach-bridge — HTTP 桥接服务, 让 fast-research 容器调用宿主的 agent-reach 能力。
 
 暴露:
   POST /exa          {"query": "...", "num": 5}  → Exa 语义搜索

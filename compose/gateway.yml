@@ -108,11 +108,11 @@ services:
     networks: [mozin]
     logging: *id001
 
-  # Deep Research Web 应用: QUEST-9B 驱动的深度研究, 支持报告迭代。
+  # Fast Research Web 应用: QUEST-9B 驱动的深度研究, 支持报告迭代。
   # 对话式 UI, SSE 实时进度, 版本管理, 串联 Open Notebook。
-  deep-research:
-    build: ../images/deep-research
-    image: mozin/deep-research:latest
+  fast-research:
+    build: ../images/fast-research
+    image: mozin/fast-research:latest
     profiles: [gateway]
     restart: unless-stopped
     environment:
@@ -128,7 +128,7 @@ services:
       HTTP_PROXY: "http://host-gateway:7890"
       HTTPS_PROXY: "http://host-gateway:7890"
       # NO_PROXY: 内部服务不走代理 (QUEST/SearXNG/MinerU/LiteLLM 等本机服务)
-      NO_PROXY: "host-gateway,localhost,127.0.0.1,deep-research,searxng,litellm,titanvault"
+      NO_PROXY: "host-gateway,localhost,127.0.0.1,fast-research,searxng,litellm,titanvault"
       JINA_READER_URL: "https://r.jina.ai"
       # agent-reach bridge (宿主 :18061, 转发到 Exa/Twitter/小红书)
       REACH_BRIDGE_URL: "http://host-gateway:18061"
