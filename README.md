@@ -25,8 +25,8 @@ One command turns a Strix Halo mini-PC into a complete on-device AI stack — LL
 
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./readme/portal-dashboard.png">
-    <img src="./readme/portal-dashboard.png" width="800" alt="TitanVault Portal">
+    <source media="(prefers-color-scheme: dark)" srcset="readme/portal-dashboard.png">
+    <img src="readme/portal-dashboard.png" width="800" alt="TitanVault Portal">
   </picture>
 </div>
 
