@@ -276,11 +276,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). This project targets **only** the Ryzen 
 
 Apache-2.0 — see [LICENSE](LICENSE). Third-party components retain their original licenses — see [NOTICE](NOTICE).
 
-## ⭐ Star History
+## ⭐ Show Your Support
 
-<a href="https://star-history.com/#kaka86mm/TitanVault&Date">
-  <img src="https://api.star-history.com/svg?repos=kaka86mm/TitanVault&type=Date" alt="Star History">
-</a>
+If TitanVault helped you, please consider giving it a star — it helps others discover the project.
+
+[![GitHub stars](https://img.shields.io/github/stars/kaka86mm/TitanVault?style=for-the-badge)](https://github.com/kaka86mm/TitanVault/stargazers)
 
 ---
 
