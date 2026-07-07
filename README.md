@@ -278,11 +278,9 @@ Apache-2.0 — see [LICENSE](LICENSE). Third-party components retain their origi
 
 ## ⭐ Star History
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kaka86mm/TitanVault&type=Date&theme=dark">
-  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kaka86mm/TitanVault&type=Date">
-  <img alt="Star History" src="https://api.star-history.com/svg?repos=kaka86mm/TitanVault&type=Date">
-</picture>
+<a href="https://star-history.com/#kaka86mm/TitanVault&Date">
+  <img src="https://api.star-history.com/svg?repos=kaka86mm/TitanVault&type=Date" alt="Star History">
+</a>
 
 ---
 
