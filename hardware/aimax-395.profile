@@ -10,11 +10,13 @@
 GGML_VULKAN_DEVICE=0   # 395 仅一个核显, 选 device 0
 
 # ===== GRUB 内核参数 (install.sh Phase 2 写入 /etc/default/grub) =====
-# amdgpu.gtt_size=122G    GTT 显存: 128G统一内存留6G给系统内核, GPU可用122G
-#                         足够加载 70G+ 大模型全 offload
+# amdgpu.gttsize=126976   GTT 显存: 124GB (128G统一内存留4G给系统内核)
+#                         单位 MB, 支持 70G+ 大模型全 offload
+# ttm.pages_limit=32505856  TTM 页数限制 (匹配 GTT)
+# amd_iommu=off           关闭 IOMMU (提升 GPU 直显存访问性能)
 # radeon.cik_support=0    禁用旧 radeon 驱动, 强制走 amdgpu
 # amdgpu.cik_support=0    同上
-GRUB_PARAMS="amdgpu.gtt_size=122G radeon.cik_support=0 amdgpu.cik_support=0"
+GRUB_PARAMS="amdgpu.gttsize=126976 radeon.cik_support=0 amdgpu.cik_support=0 amd_iommu=off ttm.pages_limit=32505856"
 
 # ===== 主力 LLM (Qwen3.6-35B-A3B MoE, MTP 版) =====
 # MTP (Multi-Token Prediction) 版推理更快。unsloth UD-Q4_K_XL 是生产验证甜点量化

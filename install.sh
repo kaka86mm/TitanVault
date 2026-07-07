@@ -546,6 +546,14 @@ phase5_start() {
         sudo -E LLAMA_VERSION="${LLAMA_VERSION:-b9840}" bash "$REPO_DIR/native/llama.cpp/build.sh"
     fi
 
+    # 编译 llama.cpp ROCm 版 (性能比 Vulkan 高 30-50%, gfx1151 MMQ patch)
+    # 前置: Phase 2 装了 ROCm SDK
+    if command -v rocminfo >/dev/null 2>&1 && ! sudo test -x /opt/llama.cpp-rocm72/llama-server; then
+        log "编译 llama.cpp (ROCm 7.2 + MMQ, 约 15-20 分钟)..."
+        sudo -E LLAMA_VERSION="${LLAMA_VERSION:-b9840}" bash "$REPO_DIR/native/llama.cpp/build-rocm.sh" || \
+            warn "ROCm 编译失败, 主力 LLM 将降级使用 Vulkan 版"
+    fi
+
     # 渲染 systemd 模板 (envsubst 读已 export 的 .env + profile 变量)
     # 关键: 变量必须 exported (load_env/load_hardware 已 set -a), 否则管道子进程看不到。
     log "注册 llama.cpp systemd 服务..."

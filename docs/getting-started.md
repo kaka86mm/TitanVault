@@ -30,10 +30,10 @@ bash install.sh
 |---|---|---|---|
 | 0 | 硬件检测 (gfx1151 + Ubuntu) | 5s | 否 |
 | 1 | 交互配置 (选档位/目录/模型源) + 生成密码 | 2min | **是** |
-| 2 | GPU 驱动 (GRUB + Mesa + Vulkan), 重启一次 | ~15min | 重启 |
+| 2 | GPU 驱动 (GRUB GTT 122G + Mesa + Vulkan + ROCm 7.2), 重启一次 | ~20min | 重启 |
 | 3 | Docker + 镜像 (build ROCm + pull 第三方 + 离线包) | ~30min | 否 |
 | 4 | 模型下载 (35B + embed + rerank + ASR) | ~30min | 否 |
-| 5 | 启动 (编译 llama.cpp + compose up + hermes/opensquilla/chrome) | ~10min | 否 |
+| 5 | 启动 (编译 llama.cpp Vulkan + ROCm + compose up + hermes/opensquilla/chrome) | ~25min | 否 |
 | 6 | 完成, 打印访问地址 + 密码 | 即时 | **记录密码** |
 
 ### Phase 1 会问你

@@ -39,7 +39,7 @@ No OpenAI API key. No cloud inference. No data sent to third parties.
 
 | | Capability | Details | Stack |
 |---|---|---|---|
-| 🧠 | **LLM Inference** | Qwen3.6-35B-A3B, full GPU offload, multimodal (text + vision) | llama.cpp → Vulkan |
+| 🧠 | **LLM Inference** | Qwen3.6-35B-A3B, full GPU offload, multimodal (text + vision), continuous batching | llama.cpp → ROCm 7.2 (MMQ patch) |
 | 🎙️ | **Speech** | Real-time ASR · Neural TTS · Meeting transcription with diarization | SenseVoice · Kokoro · Aham Voice |
 | 📄 | **Document AI** | PDF parsing: layout analysis + OCR + table extraction | MinerU (ROCm) |
 | 🎨 | **Image Generation** | Stable Diffusion / SDXL | ComfyUI (ROCm) |
@@ -116,10 +116,10 @@ The installer guides you through preset selection, installs GPU drivers, builds 
 |---|---|---|---|
 | 0 | Hardware verification (gfx1151 + Ubuntu) | 5s | No |
 | 1 | Interactive config: preset / data dir / model source | 2 min | **Yes** |
-| 2 | GPU drivers (GRUB + Mesa + Vulkan), reboots once | ~15 min | Reboot |
+| 2 | GPU drivers (GRUB GTT 122G + Mesa + Vulkan + ROCm 7.2), reboots once | ~20 min | Reboot |
 | 3 | Docker images (build ROCm + pull + offline packs) | ~30 min | No |
 | 4 | Model download (35B + embedding + reranker + ASR) | ~30 min | No |
-| 5 | Compile llama.cpp → start all services + agents | ~10 min | No |
+| 5 | Compile llama.cpp (Vulkan + ROCm) → start all services + agents | ~25 min | No |
 | 6 | Print access URLs and passwords | instant | Save them |
 
 </details>

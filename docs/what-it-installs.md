@@ -16,7 +16,7 @@
 
 | 服务 | 端口 | 说明 |
 |---|---|---|
-| llama-main | 8082 | Qwen3.6-35B-A3B 主力推理 (Vulkan GPU, 全 offload, 原生多模态) |
+| llama-main | 8082 | Qwen3.6-35B-A3B 主力推理 (ROCm 7.2 GPU + MMQ patch, 全 offload, 原生多模态) |
 | llama-embed | 8084 | Qwen3-Embedding-0.6B 向量化 |
 | llama-rerank | 8083 | Qwen3-Reranker-0.6B 重排序 |
 | hermes-dashboard | 9119 | Hermes 运维 Agent Web UI (通用对话, default profile) |
