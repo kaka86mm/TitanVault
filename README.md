@@ -40,7 +40,7 @@ No OpenAI API key. No cloud inference. No data sent to third parties.
 | | Capability | Details | Stack |
 |---|---|---|---|
 | 🧠 | **LLM Inference** | Qwen3.6-35B-A3B, full GPU offload, multimodal (text + vision), continuous batching | llama.cpp → ROCm 7.2 (MMQ patch) |
-| 🎙️ | **Speech** | Real-time ASR · Neural TTS · Meeting transcription with diarization | SenseVoice · Kokoro · Aham Voice |
+| 🎙️ | **Speech** | Real-time ASR · Neural TTS · Meeting transcription with diarization | SenseVoice · Kokoro · TitanVault Minutes |
 | 📄 | **Document AI** | PDF parsing: layout analysis + OCR + table extraction | MinerU (ROCm) |
 | 🎨 | **Image Generation** | Stable Diffusion / SDXL | ComfyUI (ROCm) |
 | 🤖 | **AI Agents** | Ops agent (Docker/systemd management) · Coding agent · Cron scheduling | Hermes · OpenSquilla |
@@ -67,7 +67,7 @@ TitanVault isn't just glue around existing tools — it includes several **origi
 | Component | What it does | Source |
 |---|---|---|
 | **[TitanVault Portal](images/titanvault-homepage/)** | Custom React dashboard: service cards with brand icons, AI assistant chat, LLM usage panel, real-time uptime | [`images/titanvault-homepage/`](images/titanvault-homepage/) |
-| **[Aham Voice](https://github.com/kaka86mm/aham-voice-web)** | Full-stack meeting intelligence: audio upload → transcription → speaker diarization → emotion detection → AI-generated meeting minutes (ROCm GPU) | [kaka86mm/aham-voice-web](https://github.com/kaka86mm/aham-voice-web) · [local mirror](images/aham-voice-web/) |
+| **[TitanVault Minutes](https://github.com/kaka86mm/titanvault-minutes)** | Full-stack meeting intelligence: audio upload → transcription → speaker diarization → emotion detection → AI-generated meeting minutes (ROCm GPU) | [kaka86mm/titanvault-minutes](https://github.com/kaka86mm/titanvault-minutes) · [local mirror](images/aham-voice-web/) |
 | **[SenseVoice](images/sensevoice/)** | Lightweight ASR API service: real-time speech-to-text with emotion and event detection | [`images/sensevoice/`](images/sensevoice/) |
 | **[Token Usage API](images/token-usage-api/)** | LLM consumption tracker: aggregates LiteLLM spend logs into a clean dashboard | [`images/token-usage-api/`](images/token-usage-api/) |
 | **[API Discover](images/api-discover/)** | Auto-generated API explorer: discovers all services, tests endpoints, renders interactive docs | [`images/api-discover/`](images/api-discover/) |
@@ -86,7 +86,7 @@ Hermes ships with **scenario-driven skills** — not raw API wrappers, but end-t
 | **titanvault-research** | Deep research agent — QUEST-9B autonomously searches, reads, and writes a cited report | "research X", "deep dive into X", "investigate X thoroughly" |
 | **titanvault-knowledge** | Hardware & architecture knowledge base (passive) | hardware questions, GPU/port/config lookups |
 
-**Meeting skill** offers two paths: *full mode* (Aham Voice: transcription + speaker diarization + AI minutes + emotion) or *quick mode* (SenseVoice: fast plain-text transcript). The ingest skill auto-detects PDFs and routes them through MinerU for table/formula-preserving parsing before embedding. The research skill runs [QUEST-9B](https://osu-nlp-group.github.io/QUEST/) (OSU NLP's deep research model) in a ReAct loop with SearXNG + page scraping, then chains into ingest to store the report for RAG.
+**Meeting skill** offers two paths: *full mode* (TitanVault Minutes: transcription + speaker diarization + AI minutes + emotion) or *quick mode* (SenseVoice: fast plain-text transcript). The ingest skill auto-detects PDFs and routes them through MinerU for table/formula-preserving parsing before embedding. The research skill runs [QUEST-9B](https://osu-nlp-group.github.io/QUEST/) (OSU NLP's deep research model) in a ReAct loop with SearXNG + page scraping, then chains into ingest to store the report for RAG.
 
 Two **meta-skills** are also included for building and refining further skills:
 
@@ -157,7 +157,7 @@ flowchart TD
         PG[("PostgreSQL + pgvector")]
         Redis[("Redis")]
         Qdrant[("Qdrant")]
-        ROCm["MinerU · ComfyUI · Aham Voice<br/>ROCm GPU"]
+        ROCm["MinerU · ComfyUI · TitanVault Minutes<br/>ROCm GPU"]
         CPU["SenseVoice · Kokoro<br/>Open Notebook · Gitea · SearXNG"]
         Obs["Uptime Kuma · Glances"]
     end
@@ -194,7 +194,7 @@ flowchart TD
 | 18791 | OpenSquilla |
 | 9222 | Chrome CDP |
 | 9991 / 8081 | SenseVoice / Kokoro TTS |
-| 8765 | Aham Voice (meeting minutes) |
+| 8765 | TitanVault Minutes (meeting minutes) |
 | 8090 / 18080 | MinerU (web / API) |
 | 8188 | ComfyUI |
 | 8088 / 5055 | Open Notebook |
