@@ -529,7 +529,7 @@ class ResearchAgent:
                 summary_lines.append(f"- {url[:80]}")
 
         emit({"type": "verify_done", "total": total_cited,
-              "verified": reachable, "trust": trust_level})
+              "verified": reachable, "trust": source_note})
 
         return report + "\n".join(summary_lines)
 
