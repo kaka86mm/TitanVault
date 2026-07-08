@@ -98,10 +98,10 @@ Do NOT repeat searches you've already done (listed in existing knowledge).
 When done, output the COMPLETE updated report in markdown.
 
 ## Available Tools
-- search: {{"name": "search", "arguments": {{"query": ["query"]}}}}
+- search: {{"name": "search", "arguments": {{"query": ["query"]}}}} (web search — do NOT use site: operator)
 - exa: {{"name": "exa", "arguments": {{"query": ["query"]}}}} (semantic search, English/technical)
-- twitter: {{"name": "twitter", "arguments": {{"query": ["query"]}}}} (social discussions)
-- xiaohongshu: {{"name": "xiaohongshu", "arguments": {{"query": ["query"]}}}} (中文生活消费)
+- twitter: {{"name": "twitter", "arguments": {{"query": ["query"]}}}} (social discussions/opinions — USE THIS for social media, NOT site:weibo.com)
+- xiaohongshu: {{"name": "xiaohongshu", "arguments": {{"query": ["query"]}}}} (中文生活消费/真实评价)
 - visit: {{"name": "visit", "arguments": {{"url": ["url"], "goal": "..."}}}}
 
 To call a tool:
@@ -283,15 +283,18 @@ class ResearchAgent:
         emit({"type": "start", "question": question,
               "iteration": is_iteration, "max_turns": self.max_turns})
 
-        # ── 预热搜索: 自动用 exa + searxng 各搜一次, 注入初始上下文 ──
-        # 只给标题+URL (不给完整 snippet), 引导 QUEST 自己 visit 深入阅读
+        # ── 预热搜索: 自动用 exa + searxng + 社媒各搜一次, 注入初始上下文 ──
+        # 首次研究和迭代都执行 (迭代时用户可能要求新的信息源)
         primer = self._primer_search(question, context, emit)
         if primer:
-            messages.append({"role": "user",
-                             "content": f"<tool_response>\n{primer}\n</tool_response>\n\n"
-                                        f"These are initial results (titles only). "
-                                        f"Now break down the question into sub-questions and search each. "
-                                        f"Visit key pages for details. Do NOT write the report yet."})
+            primer_msg = (f"<tool_response>\n{primer}\n</tool_response>\n\n"
+                          f"These are initial results. "
+                          f"Now break down the question into sub-questions and search each. "
+                          f"Visit key pages for details. Do NOT write the report yet.\n\n"
+                          f"IMPORTANT: For social media discussions/opinions, use the twitter/xiaohongshu tools. "
+                          f"Do NOT search 'site:weibo.com' or 'site:xueqiu.com' with the search tool — "
+                          f"use twitter for discussions and xiaohongshu for user reviews instead.")
+            messages.append({"role": "user", "content": primer_msg})
 
         for turn in range(self.max_turns):
             emit({"type": "thinking", "turn": turn + 1, "max_turns": self.max_turns})
