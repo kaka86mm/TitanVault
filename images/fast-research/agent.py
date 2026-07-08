@@ -476,38 +476,31 @@ class ResearchAgent:
                           if re.search(r'\]\(https?://', s) or re.search(r'https?://', s)]
         citation_rate = len(cited_sentences) / max(len(sentences_with_numbers), 1)
 
-        # 4. 构造可信度摘要
+        # 4. 构造来源摘要 (不评判"可信度", 只客观列出来源信息)
         total_cited = len(all_urls)
         checked = min(len(all_urls), 5)
         if total_cited == 0:
-            trust_level = "⚠️ 无引用"
-            trust_color = "⚠️"
-        elif total_cited >= 5 and reachable >= checked * 0.6:
-            trust_level = "✅ 高可信"
-            trust_color = "✅"
+            source_note = "报告未包含来源链接"
+        elif total_cited >= 8:
+            source_note = f"✅ 丰富来源 ({total_cited} 个引用, {reachable}/{checked} 可达)"
         elif total_cited >= 3:
-            trust_level = "⚠️ 中等可信"
-            trust_color = "⚠️"
+            source_note = f"📚 {total_cited} 个来源, {reachable}/{checked} 可达"
         else:
-            trust_level = "❌ 低可信"
-            trust_color = "❌"
+            source_note = f"📎 {total_cited} 个来源, {reachable}/{checked} 可达"
 
         summary_lines = [
-            "\n\n---\n\n## 📎 来源验证\n",
-            f"> {trust_color} **{trust_level}** — "
-            f"报告引用了 {total_cited} 个来源, "
-            f"其中 {reachable}/{checked} 个链接可达, "
-            f"{int(citation_rate*100)}% 的数据句有引用。\n",
+            "\n\n---\n\n## 📎 来源\n",
+            f"> {source_note}\n",
         ]
 
         if all_urls:
             summary_lines.append("**引用来源:**")
-            for i, url in enumerate(all_urls[:10], 1):
+            for i, url in enumerate(all_urls[:15], 1):
                 domain = re.search(r'https?://([^/]+)', url)
                 domain_name = domain.group(1) if domain else url[:30]
                 summary_lines.append(f"{i}. [{domain_name}]({url})")
         else:
-            summary_lines.append("⚠️ 本报告未包含来源引用,数据可信度无法验证。")
+            summary_lines.append("⚠️ 本报告未包含来源链接。")
 
         if unreachable_urls:
             summary_lines.append(f"\n**不可达链接 ({len(unreachable_urls)}):**")
