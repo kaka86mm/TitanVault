@@ -394,22 +394,38 @@ class ResearchAgent:
               "forced": True})
 
         # 强制总结: 用精简上下文 (不传完整对话历史, 只传已收集的知识)
-        # 避免 QUEST-9B 因上下文过大而返回空
+        # 迭代时保留上一版完整报告, 在其基础上补充而非从头写
         summary_prompt = self._build_summary_prompt(question, context, is_iteration)
+        if is_iteration and context.latest_report:
+            summary_system = (
+                "You are an expert research analyst. The user wants to IMPROVE an existing report.\n"
+                "The previous report and newly gathered information are provided below.\n"
+                "Your task: produce the COMPLETE updated report that:\n"
+                "1. PRESERVES the existing content from the previous report (do not delete or shorten existing sections)\n"
+                "2. ADDS new information from the newly gathered data as new sections or expanded paragraphs\n"
+                "3. Integrates social media discussions/opinions if available\n"
+                "4. Keeps markdown formatting with headers, tables, and citations\n"
+                "5. Write in the SAME language as the question\n"
+                "6. Output the COMPLETE report (previous content + new additions)\n"
+                "Write the report directly, do not call any tools."
+            )
+        else:
+            summary_system = (
+                "You are an expert research analyst. Based on the gathered information below, "
+                "write a detailed, well-structured research report answering the user's question. "
+                "Follow these rules:\n"
+                "1. Write in markdown with clear headers (# title, ## sections, ### subsections).\n"
+                "2. Use markdown tables for structured data.\n"
+                "3. Include in-text citations as hyperlinks: ([Source Name](url)).\n"
+                "4. Add a References section at the end with all source URLs.\n"
+                "5. MUST determine concrete conclusions — no generic platitudes.\n"
+                "6. Every number/statistic MUST come from the gathered info with a citation.\n"
+                "7. Write in the SAME language as the question.\n"
+                "8. Aim for 2000+ words. This is very important to my career.\n"
+                "Write the report directly, do not call any tools."
+            )
         summary_messages = [
-            {"role": "system", "content":
-             "You are an expert research analyst. Based on the gathered information below, "
-             "write a detailed, well-structured research report answering the user's question. "
-             "Follow these rules:\n"
-             "1. Write in markdown with clear headers (# title, ## sections, ### subsections).\n"
-             "2. Use markdown tables for structured data.\n"
-             "3. Include in-text citations as hyperlinks: ([Source Name](url)).\n"
-             "4. Add a References section at the end with all source URLs.\n"
-             "5. MUST determine concrete conclusions — no generic platitudes.\n"
-             "6. Every number/statistic MUST come from the gathered info with a citation.\n"
-             "7. Write in the SAME language as the question.\n"
-             "8. Aim for 2000+ words. This is very important to my career.\n"
-             "Write the report directly, do not call any tools."},
+            {"role": "system", "content": summary_system},
             {"role": "user", "content": summary_prompt},
         ]
         try:
@@ -523,7 +539,8 @@ class ResearchAgent:
         parts = [f"Research Question: {question}\n"]
 
         if is_iteration and context.latest_report:
-            parts.append(f"Previous Report:\n{context.latest_report[:3000]}\n")
+            # 迭代时保留完整上一版报告 (不截断, 让 QUEST 在此基础上补充)
+            parts.append(f"## Previous Report (preserve this content, add new info):\n{context.latest_report[:8000]}\n")
 
         parts.append("Information Gathered from web research:")
         parts.append(f"(Based on {len(context.searched_queries)} searches, "
