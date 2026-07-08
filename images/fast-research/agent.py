@@ -356,8 +356,10 @@ class ResearchAgent:
                 is_real_report = (
                     report_body.startswith("#")
                     and n_sections >= 3
-                    and len(report_body) >= 500
+                    and len(report_body) >= 1000
                     and not has_junk
+                    and not report_body.rstrip().endswith("---")
+                    and not report_body.rstrip().endswith("> 数据")
                 )
                 if is_real_report:
                     report = self._verify_report(report, context, emit)
