@@ -640,15 +640,14 @@ class ResearchAgent:
 
     def _primer_search(self, question: str, context: ResearchContext,
                        emit) -> str:
-        """预热搜索: 自动用 exa + searxng 各搜一次, 注入初始上下文。
+        """预热搜索: 自动用 exa + searxng + 社媒各搜一次, 注入初始上下文。
 
-        QUEST-9B 倾向只调 search 且不稳定, 这里强制先跑两个引擎,
-        让模型后续专注于 visit + twitter/小红书 (社媒讨论)。
+        搜索词会经过 _refine_query 提炼 (去掉口语前缀/指令后缀)。
         """
         results = []
-        # Exa 语义搜索 (高质量)
-        emit({"type": "search", "query": question, "engine": "exa", "auto": True})
-        r = tool_exa(question, num=5)
+        # Exa 语义搜索 (高质量, 不怕长句)
+        emit({"type": "search", "query": question[:80], "engine": "exa", "auto": True})
+        r = tool_exa(question[:80], num=5)
         context.add_search(question)
         if r.get("results"):
             results.append(self._format_search_results(r))
@@ -863,9 +862,14 @@ class ResearchAgent:
         return f"[Unknown tool: {name}]"
 
     def _format_search_results(self, r: dict) -> str:
-        lines = [f"## Search Results: {r['query']}"]
-        for i, item in enumerate(r["results"], 1):
-            lines.append(f"{i}. {item['title']}\n   {item['url']}\n   {item['snippet']}")
+        """格式化搜索结果给 QUEST 阅读。包含完整 snippet 提供足够上下文。"""
+        lines = [f"## Search: {r['query']} ({len(r.get('results',[]))} results)"]
+        for i, item in enumerate(r.get("results", []), 1):
+            title = item.get("title", "")
+            url = item.get("url", "")
+            snippet = item.get("snippet", "")
+            # 完整 snippet (不截断), 给 QUEST 足够信息判断是否值得 visit
+            lines.append(f"{i}. **{title}**\n   URL: {url}\n   {snippet}")
         return "\n".join(lines)
 
     def _extract_report(self, text: str) -> str:

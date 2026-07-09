@@ -43,6 +43,9 @@ def search(query: str, skip_queries: list = None) -> dict:
 
     skip_queries: 已搜过的 query 列表 (去重, 避免迭代时重复搜索)。
     """
+    # 提取搜索关键词 (长句→关键词, 提升搜索质量)
+    query = _refine_query(query)
+
     if skip_queries and query.lower() in [q.lower() for q in skip_queries]:
         return {"query": query, "results": [], "skipped": True}
 
@@ -64,15 +67,65 @@ def search(query: str, skip_queries: list = None) -> dict:
         results.append({
             "title": r.get("title", ""),
             "url": r.get("url", ""),
-            "snippet": r.get("content", "")[:200],
+            "snippet": r.get("content", "")[:300],
         })
     return {"query": query, "results": results}
 
 
-def wechat_search(query: str) -> dict:
-    """微信公众号文章搜索 (weixin_search_mcp via bridge)。
-    返回 {"query", "results": [{"title","url","snippet"}]}, url 是 mp.weixin.qq.com 真实链接。
+def _refine_query(query: str) -> str:
+    """将长句/口语化问题提炼为搜索引擎友好的关键词。
+
+    SearXNG/Bing/Google 对长句搜索效果差, 需要提取核心关键词。
+    策略:
+    1. 短关键词 (<30字且无逗号) 直接用
+    2. 长句: 去口语前缀 → 按标点分句取最短有效段 → 截断
+    3. 纯指令性文本 (无实体名词) → 返回原值让搜索引擎处理
     """
+    query = query.strip()
+    # 短关键词直接用
+    if len(query) <= 30 and not re.search(r'[，。！？、；：\?\!\.]', query):
+        return query
+
+    # 去掉口语前缀 (递归去, 有的多层前缀)
+    for _ in range(3):
+        old = query
+        query = re.sub(r'^(帮我|请|你|给我|我想|我要|看看|搜一下|搜索|查一下|研究一下|调研|分析一下|你帮我|整体研究一下|补充|了解一下|麻烦)\s*', '', query)
+        if query == old:
+            break
+
+    # 去掉指令性后缀
+    query = re.sub(r'(引入社交媒体信息|加入.*判断|可以引入.*信息|补充.*信息|引入.*信息)$', '', query)
+    # 去掉 "最新 2026年7月" 之类的后缀 (预热搜索加的)
+    query = re.sub(r'\s*最新\s*\d{4}年\d+月\s*$', '', query)
+
+    # 如果有逗号/问号, 提取实体最密集的分句
+    parts = re.split(r'[，。！？\?\!；;]', query)
+    parts = [p.strip() for p in parts if len(p.strip()) > 3]
+    if len(parts) > 1:
+        # 选包含数字、英文、专有名词最多的分句 (实体密度最高)
+        def entity_score(s):
+            score = 0
+            score += len(re.findall(r'\d', s)) * 2      # 数字
+            score += len(re.findall(r'[A-Z]', s)) * 2    # 大写英文 (专有名词)
+            score += len(re.findall(r'[\u4e00-\u9fff]{2,}', s))  # 中文词组
+            return score
+        best = max(parts, key=entity_score)
+        if len(best) <= 50:
+            query = best
+        else:
+            query = parts[0]
+
+    # 最终截断到 60 字符
+    if len(query) > 60:
+        query = query[:60]
+
+    query = re.sub(r'\s+', ' ', query).strip()
+    return query if query else query  # 空就返回空, 不编造
+
+
+def wechat_search(query: str) -> dict:
+    """微信公众号文章搜索 (weixin_search_mcp via bridge)。"""
+    query = _refine_query(query)
     try:
         resp = requests.post(
             f"{REACH_BRIDGE_URL}/wechat",
@@ -110,9 +163,9 @@ def wechat_search(query: str) -> dict:
 
 def exa_search(query: str, num: int = 5) -> dict:
     """Exa 语义搜索 (agent-reach)。擅长英文/技术/代码, 返回高质量结果+高亮。
-    通过宿主 agent-reach-bridge 调用 mcporter → Exa MCP。
-    返回 {"query", "results": [{"title","url","snippet"}]}.
+    Exa 是语义搜索, 不需要提炼关键词, 但仍然去掉口语前缀。
     """
+    query = _refine_query(query)
     try:
         resp = requests.post(
             f"{REACH_BRIDGE_URL}/exa",
@@ -155,6 +208,7 @@ def twitter_search(query: str, num: int = 10) -> dict:
     """Twitter/X 搜索 (agent-reach)。通过宿主 twitter-cli。
     返回 {"query", "results": [{"title","url","snippet"}]}.
     """
+    query = _refine_query(query)
     try:
         resp = requests.post(
             f"{REACH_BRIDGE_URL}/twitter",
