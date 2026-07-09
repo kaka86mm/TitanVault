@@ -68,7 +68,18 @@ def search(query: str, skip_queries: list = None) -> dict:
             "title": r.get("title", ""),
             "url": r.get("url", ""),
             "snippet": r.get("content", "")[:300],
+            "publishedDate": r.get("publishedDate", ""),
         })
+    # 按发布日期排序 (最新的在前, 无日期的排后面)
+    from datetime import datetime as _dt
+    def parse_date(s):
+        if not s: return _dt.min
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%a, %d %b %Y"):
+            try: return _dt.strptime(s[:19] if "T" in s else s[:10], fmt[:19] if "T" in fmt else fmt)
+            except: continue
+        try: return _dt.fromisoformat(s[:19])
+        except: return _dt.min
+    results.sort(key=lambda x: parse_date(x.get("publishedDate","")), reverse=True)
     return {"query": query, "results": results}
 
 
