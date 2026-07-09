@@ -57,9 +57,15 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
 .new-btn:hover { filter: brightness(1.1); box-shadow: 0 0 0 3px var(--accent-glow); }
 .session-list { flex: 1; overflow-y: auto; padding: var(--space-2); }
 .session-item { padding: var(--space-3); border-radius: var(--radius-md); cursor: pointer;
-  margin-bottom: var(--space-1); transition: background 0.12s; border: 1px solid transparent; }
+  margin-bottom: var(--space-1); transition: background 0.12s; border: 1px solid transparent;
+  position: relative; }
 .session-item:hover { background: var(--surface-hover); }
 .session-item.active { background: var(--accent-subtle); border-color: var(--accent); }
+.session-del { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px;
+  border-radius: var(--radius-sm); display: none; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--fg-muted); cursor: pointer; background: var(--surface); }
+.session-item:hover .session-del { display: flex; }
+.session-del:hover { color: var(--danger, #ef4444); background: var(--danger-dim, rgba(239,68,68,0.15)); }
 .session-item .q { font-size: var(--text-sm); font-weight: 500; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
 .session-item .meta { font-size: var(--text-xs); color: var(--fg-muted); margin-top: var(--space-1);
@@ -471,7 +477,20 @@ async function loadSessions() {
         <span>${s.status === 'finalized' ? '✓ 已完成' : s.n_messages + ' 轮'}</span>
         <span>${timeAgo(s.created_at)}</span>
       </div>
+      <span class="session-del" onclick="event.stopPropagation();deleteSession('${s.session_id}','${esc(s.question).substring(0,30).replace(/'/g,'')}')" title="删除">✕</span>
     </div>`).join('');
+}
+
+async function deleteSession(sid, question) {
+  if (!confirm('删除这个研究？\n' + question)) return;
+  await api(`/api/sessions/${sid}`, { method: 'DELETE' });
+  if (currentSession === sid) {
+    currentSession = null;
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    document.getElementById('welcomeView').classList.remove('hidden');
+    document.getElementById('sessionView').classList.add('hidden');
+  }
+  loadSessions();
 }
 
 function newResearch() {
