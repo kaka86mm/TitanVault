@@ -30,9 +30,9 @@ visit:
 
 # agent 循环参数
 agent:
-  max_llm_calls: 30         # 每个研究问题最多 30 轮 LLM 调用
-  max_tool_calls: 20        # 最多 20 次工具调用
-  context_threshold: 100000 # 超过则触发记忆压缩
+  max_llm_calls: 8          # 每个研究问题最多 8 轮 LLM 调用 (Vulkan 大 context 不稳定)
+  max_tool_calls: 8         # 最多 8 次工具调用
+  context_threshold: 50000  # 超过则警告 (Vulkan 在 30K+ tokens 时可能 ErrorDeviceLost)
 
 # 输出
 output:

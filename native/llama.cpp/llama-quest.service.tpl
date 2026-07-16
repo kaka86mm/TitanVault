@@ -13,7 +13,7 @@ ExecStart=/opt/llama.cpp/llama-server \
     --port 8093 \
     -ngl 99 \
     -c 131072 \
-    -np 2 \
+    -np 1 \
     -t 8 \
     --flash-attn on \
     --cache-type-k q4_0 \

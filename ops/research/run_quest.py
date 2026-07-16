@@ -68,6 +68,7 @@ def main():
     sys.path.insert(0, str(SCRIPT_DIR))
     import tool_search_local  # noqa: F401 - 注册 "search" 工具
     import tool_visit_local   # noqa: F401 - 注册 "visit" 工具
+    import tool_make_chart    # noqa: F401 - 注册 "make_chart" 工具 + auto_chart_from_tables
 
     # 导入 QUEST 的 prompt 和 agent
     # 需要 QUEST inference 目录在 path 里
@@ -80,7 +81,7 @@ def main():
     from qwen_agent.llm.schema import Message
 
     # 构建工具列表
-    function_list = ["search", "visit", "memory"]
+    function_list = ["search", "visit", "memory", "make_chart"]
     # python 工具 (可选, 需要 sandbox)
     if os.environ.get("QUEST_PYTHON_TOOL") == "1":
         function_list.append("PythonInterpreter")
@@ -111,10 +112,15 @@ def main():
         llm=llm_cfg,
         endpoint=f"http://{cfg['main_model']['hostname']}:{cfg['main_model']['port']}/v1",
         api_key=cfg["main_model"]["api_key"],
+        max_turns=cfg["agent"]["max_llm_calls"],
     )
 
     # 运行
     report = agent.run(question)
+
+    # 自动配图: 扫描报告中的表格, 对含数值的生成 ECharts 图表
+    from tool_make_chart import auto_chart_from_tables
+    report = auto_chart_from_tables(report)
 
     # 保存
     save_dir = Path(cfg["output"]["save_dir"])

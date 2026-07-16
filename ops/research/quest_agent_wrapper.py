@@ -15,6 +15,8 @@ from typing import List, Dict, Optional
 from openai import OpenAI
 from qwen_agent.tools.base import BaseTool
 
+TO = chr(60) + "tool_call" + chr(62)
+TC = chr(60) + "/tool_call" + chr(62)
 
 # QUEST 的 system prompt (从 QUEST prompt.py 提炼的精简版)
 SYSTEM_PROMPT = """You are QUEST, a deep research agent. Your goal is to answer the user's question thoroughly using web search and page reading.
@@ -22,6 +24,9 @@ SYSTEM_PROMPT = """You are QUEST, a deep research agent. Your goal is to answer 
 ## Available Tools
 - search: Search the web. Input: {"query": ["query1", "query2"]} (array of queries)
 - visit: Read webpage content. Input: {"url": ["url1", "url2"], "goal": "what you're looking for"}
+- make_chart: Generate a chart from data. Input: {"title": "...", "chart_type": "Bar Chart", "x_field": "...", "y_field": "...", "data": [{"...": 0}]}
+  Use for comparisons, trends, rankings. chart_type: Bar Chart / Line Chart / Pie Chart / Scatter Plot.
+  Only use REAL data from pages you visited.
 
 ## Process
 1. Break down the question into sub-questions
@@ -34,13 +39,14 @@ SYSTEM_PROMPT = """You are QUEST, a deep research agent. Your goal is to answer 
 When you have gathered enough information, write your final report in markdown:
 - Start with a direct answer summary
 - Include detailed findings with [source: URL] citations
+- Use markdown tables for structured comparisons
 - Note any conflicting information or gaps
 - End with a confidence assessment
 
 To call a tool, output:
-<tool_call>
+""" + TO + """
 {"name": "tool_name", "arguments": {...}}
-</tool_call>
+""" + TC + """
 
 After receiving tool results, continue researching or write your final report.
 Do NOT call tools forever — when you have enough info, STOP calling tools and write the report."""
@@ -60,7 +66,6 @@ class QuestAgent:
         self.client = OpenAI(api_key=api_key, base_url=endpoint)
         self.model_name = "QUEST-9B"
         self.max_turns = max_turns
-        # 工具注册表
         self.tools: Dict[str, BaseTool] = {}
         for name in function_list:
             tool_cls = self._get_tool_class(name)
@@ -70,39 +75,96 @@ class QuestAgent:
     def _get_tool_class(self, name: str):
         """从 qwen_agent 工具注册表获取工具类。"""
         from qwen_agent.tools.base import TOOL_REGISTRY
-        # TOOL_REGISTRY: name -> 工具类 (直接是类, 不是 dict)
         tool_cls = TOOL_REGISTRY.get(name)
         if tool_cls and isinstance(tool_cls, type):
             return tool_cls
-        # memory 工具特殊处理 (用内置简化版)
         if name == "memory":
             return MemoryTool
         return None
 
     def _call_llm(self, messages: List[Dict]) -> str:
-        """调用 LLM, 返回文本。"""
+        """调用 LLM, 返回文本。
+
+        QUEST 是推理模型: 思维链分离到 reasoning_content, 实际输出在 content。
+        合并两者: 优先 content, 空则用 reasoning_content。
+        上下文保护: 估算总 token, 超过 25000 则裁掉中间的 tool 结果。
+        """
+        # 上下文保护: 估算总字符数, 超过 80000 (~25K tokens) 则裁中间消息
+        total_chars = sum(len(m.get("content", "")) for m in messages)
+        if total_chars > 80000:
+            # 保留 system + user(原始问题) + 最后 4 条, 中间的 tool 结果截断
+            if len(messages) > 6:
+                for m in messages[2:-4]:
+                    c = m.get("content", "")
+                    if len(c) > 500:
+                        m["content"] = c[:200] + "\n...[truncated]...\n" + c[-200:]
+            total_chars = sum(len(m.get("content", "")) for m in messages)
+            print(f"  [context trimmed to ~{total_chars//4} tokens]", flush=True)
+
         try:
             resp = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
-                max_tokens=4096,
-                temperature=0.7,
+                max_tokens=10000,
+                temperature=0.6,
+                top_p=0.95,
+                presence_penalty=1.1,
             )
-            return resp.choices[0].message.content or ""
+            msg = resp.choices[0].message
+            content = msg.content or ""
+            reasoning = getattr(msg, "reasoning_content", None) or ""
+            reply = content if content.strip() else reasoning
+            if not reply.strip():
+                reply = reasoning + content
+            return reply
         except Exception as e:
             return f"[LLM Error: {e}]"
 
     def _parse_tool_call(self, text: str):
-        """从 LLM 输出解析 tool_call。返回 (name, args) 或 None。"""
-        matches = re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", text, re.DOTALL)
+        """从 LLM 输出解析 tool_call。返回 (name, args) 或 None。
+
+        处理 QUEST 特有问题:
+        - {{}} 双花括号 (从 prompt format string 转义学到)
+        - jinja 格式
+        """
+        pat1 = re.escape(TO) + r"\s*(.*?)\s*" + re.escape(TC)
+        matches = re.findall(pat1, text, re.DOTALL)
+        if not matches:
+            matches = re.findall(r"<\|start\|>functions\.\w+<\|message\|>\s*(.*?)\s*(?:<\|end\|>|$)", text, re.DOTALL)
         if not matches:
             return None
         raw = matches[-1].strip()
-        try:
-            call = json.loads(raw)
-            return call.get("name"), call.get("arguments", {})
-        except json.JSONDecodeError:
+
+        def _try_parse(s):
+            try:
+                return json.loads(s)
+            except (json.JSONDecodeError, TypeError):
+                return None
+
+        call = _try_parse(raw)
+        if call is None:
+            fixed = raw
+            for _ in range(10):
+                fixed = fixed.replace("{{", "{").replace("}}", "}")
+                call = _try_parse(fixed)
+                if call is not None:
+                    break
+                if "{{" not in fixed and "}}" not in fixed:
+                    break
+        if not isinstance(call, dict):
             return None
+        name = call.get("name")
+        args = call.get("arguments", {})
+        if not name:
+            return None
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
+        return name, args
 
     def _execute_tool(self, name: str, args) -> str:
         """执行工具调用。"""
@@ -128,10 +190,8 @@ class QuestAgent:
             reply = self._call_llm(messages)
             messages.append({"role": "assistant", "content": reply})
 
-            # 检查是否调工具
             tool_call = self._parse_tool_call(reply)
             if not tool_call:
-                # 没有工具调用 = 最终报告
                 print(">>> 最终报告生成", flush=True)
                 return self._extract_report(reply)
 
@@ -140,17 +200,21 @@ class QuestAgent:
             result = self._execute_tool(name, args)
             print(f"<<< 结果: {result[:100]}...", flush=True)
 
-            # 把工具结果作为 user message 回填
-            messages.append({"role": "user", "content": f"<tool_response>\n{result[:8000]}\n</tool_response>"})
+            messages.append({"role": "user", "content": TO + "\n" + result[:8000] + "\n" + TC})
 
-        # 超过最大轮数, 强制要 LLM 总结
         print(">>> 达到最大轮数, 强制总结", flush=True)
         messages.append({"role": "user", "content": "You have done enough research. Now write your final report based on all information gathered."})
         return self._extract_report(self._call_llm(messages))
 
     def _extract_report(self, text: str) -> str:
-        """从 LLM 输出提取报告 (去掉残留的 tool_call 标记)。"""
-        text = re.sub(r"<tool_call>.*?</tool_call>", "", text, flags=re.DOTALL).strip()
+        """从 LLM 输出提取报告 (去掉残留的 tool_call 标记和 jinja 格式)。"""
+        pat = re.escape(TO) + r".*?" + re.escape(TC)
+        text = re.sub(pat, "", text, flags=re.DOTALL).strip()
+        text = re.sub(r"<\|start\|>functions\.\w+<\|message\|>.*?(?:<\|end\|>|$)", "", text, flags=re.DOTALL)
+        text = re.sub(r"<\|start\|>.*?<\|message\|>", "", text, flags=re.DOTALL)
+        text = re.sub(r"<\|end\|>", "", text)
+        text = re.sub(r"<\|im_start\|>.*?<\|im_end\|>", "", text, flags=re.DOTALL)
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
         return text
 
 

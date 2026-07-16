@@ -28,6 +28,7 @@ metadata:
 | **QUEST-9B** (Q4) | llama.cpp :8093 | deep research 专用模型（OSU NLP 训练）|
 | **SearXNG** | :8087 | 元搜索（聚合 Google/Bing/等）|
 | **网页抓取** | requests + trafilatura | 页面阅读 + 正文提取 |
+| **图表生成** | mcpjungle :8086 → flint-chart-mcp | 报告中的数值表格自动配 ECharts 图表 |
 | **记忆/摘要** | LiteLLM :4000 → 35B | 长上下文压缩 |
 
 ## 黄金规则：调用 run_quest.py
@@ -89,6 +90,7 @@ bash ops/ingest/ingest.sh text "$(cat /data/quest-reports/quest-*.md)" --title "
 | "exceeds context size" | context 太小; 重启服务用 `-c 32768` 或更大 | 减少 max_turns (agent 循环轮数) |
 | SearXNG :8087 不通 | `docker compose --profile apps ps searxng`; 没起则拉起 | research 无法工作 (搜索是核心) |
 | visit 总是失败 | 网络问题 (部分外站不可达); 检查 `curl -sI <url>` | 搜索结果的 snippet 仍可用, 只是没全文 |
+| 图表未生成 | mcpjungle :8086 不通; `docker ps | grep mcpjungle`; `curl localhost:8086/health` | 报告仍正常, 只是无图表 (flint-chart-mcp 是可选增强) |
 | 报告质量差/跑题 | QUEST-9B 是 9B 模型, 复杂问题可能不够; 换 35B (慢但更强) | 调整问题表述, 更具体 |
 | agent 循环不终止 | max_turns 限制兜底; 检查 run_quest.py 的 max_turns 设置 | 手动 Ctrl-C, 看已有搜索结果 |
 | torch/transformers 报错 | QUEST venv 可能坏了; 重建: `uv venv ~/quest-venv --python 3.10 && uv pip install ...` | 升级 transformers |
