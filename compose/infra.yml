@@ -67,9 +67,9 @@ services:
     logging: *id001
 
   qdrant:
-    # 版本对齐 Dify 1.15.0 兼容 (上游用 langgenius/qdrant:v1.8.3, 官方 qdrant:v1.8.3 API 兼容)
-    # 注意: qdrant/v1.13+ tag 不存在 (官方用纯数字, 但 Dify 需 1.8.x 兼容版)
-    image: qdrant/qdrant:v1.8.3
+    # qdrant 向量数据库 (Dify 已移除, 保留供其它向量检索服务使用)
+    # v1.8.3 → v1.18: API 向后兼容, 无 Dify 兼容约束后可升
+    image: qdrant/qdrant:v1.18
     profiles: [infra]
     restart: unless-stopped
     environment:

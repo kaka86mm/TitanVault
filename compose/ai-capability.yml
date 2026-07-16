@@ -184,7 +184,7 @@ services:
 
   mineru-web-minio:
     # mineru-web 专用 minio (对象存储, 存上传的 PDF + 解析产物)。独立于发行版其它存储。
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     profiles: [ai-capability]
     restart: unless-stopped
     ports: ["9000:9000", "9001:9001"]

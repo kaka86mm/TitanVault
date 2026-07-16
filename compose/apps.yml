@@ -47,7 +47,7 @@ services:
     logging: *id001
 
   gitea:
-    image: gitea/gitea:1.24
+    image: gitea/gitea:1.27
     profiles: [apps]
     restart: unless-stopped
     environment:
