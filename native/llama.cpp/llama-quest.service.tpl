@@ -12,12 +12,17 @@ ExecStart=/opt/llama.cpp/llama-server \
     --host 0.0.0.0 \
     --port 8093 \
     -ngl 99 \
-    -c 65536 \
+    -c 131072 \
     -np 2 \
     -t 8 \
-    --no-mmap
-Restart=on-failure
+    --flash-attn on \
+    --cache-type-k q4_0 \
+    --cache-type-v q4_0 \
+    --mmap
+Restart=always
 RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
 
 [Install]
 WantedBy=multi-user.target

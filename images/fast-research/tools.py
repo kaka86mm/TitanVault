@@ -21,6 +21,8 @@ JINA_READER_URL = os.environ.get("JINA_READER_URL", "https://r.jina.ai")
 EXA_MCPORTER_URL = os.environ.get("EXA_MCPORTER_URL", "http://host-gateway:18061")
 # agent-reach bridge (宿主 :18061, 转发到 Exa/Twitter/小红书)
 REACH_BRIDGE_URL = os.environ.get("REACH_BRIDGE_URL", "http://host-gateway:18061")
+# MCP 网关 (mcpjungle, 注册了 flint-chart-mcp 等工具)
+MCPJUNGLE_URL = os.environ.get("MCPJUNGLE_URL", "http://host-gateway:8086")
 # HTTP/HTTPS 代理 (mihomo, host 模式监听宿主 7890)
 HTTP_PROXY = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy") or "http://host-gateway:7890"
 PROXIES = {"http": HTTP_PROXY, "https": HTTP_PROXY} if HTTP_PROXY else None
@@ -317,6 +319,111 @@ def _parse_xhs_output(raw: str) -> list:
             "snippet": (f"@{nick}: {t}" if nick else t)[:200],
         })
     return results
+
+
+# ============================================================================
+# 图表生成 (Flint Chart via mcpjungle MCP 网关)
+# ============================================================================
+
+def make_chart(
+    title: str,
+    chart_type: str,
+    x_field: str,
+    y_field: str,
+    data: list,
+    color_field: str = "",
+    semantic_types: dict = None,
+) -> dict:
+    """通过 mcpjungle → flint-chart-mcp 生成 ECharts spec。
+
+    返回 {"ok": bool, "markdown": "```echarts\\n{...}\\n```"} —
+    markdown 块可直接嵌入报告, 前端用 ECharts 渲染。
+
+    参数:
+      title:        图表标题
+      chart_type:   Flint 图表类型 (Bar Chart / Line Chart / Pie Chart /
+                    Scatter Plot / Area Chart / Radar Chart / ...)
+      x_field:      X 轴字段名 (data 中对应的 key)
+      y_field:      Y 轴字段名 (数值字段)
+      data:         数据行列表 [{"company": "海光", "score": 92}, ...]
+      color_field:  分组字段名 (可选, 用于分组柱状图/多线图等)
+      semantic_types: 字段语义类型 (可选, 自动推断: 数字→Quantity, 文本→Nominal)
+    """
+    # 自动推断 semantic_types
+    if semantic_types is None:
+        semantic_types = _infer_semantic_types(data, x_field, y_field, color_field)
+
+    # 构建 Flint ChartAssemblyInput
+    encodings = {"x": {"field": x_field}, "y": {"field": y_field}}
+    if color_field:
+        encodings["color"] = {"field": color_field}
+
+    chart_spec = {
+        "chartType": chart_type,
+        "encodings": encodings,
+        "baseSize": {"width": 560, "height": 380},
+    }
+
+    # 调用 mcpjungle /api/v0/tools/invoke (flat params, 不用 input 包装)
+    payload = {
+        "name": "flint-chart__compile_chart",
+        "backend": "echarts",
+        "chart_spec": chart_spec,
+        "data": {"values": data},
+        "semantic_types": semantic_types,
+    }
+
+    try:
+        resp = requests.post(
+            f"{MCPJUNGLE_URL}/api/v0/tools/invoke",
+            json=payload, timeout=20,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+    except Exception as e:
+        return {"ok": False, "error": f"mcpjungle invoke failed: {e}"}
+
+    if result.get("isError"):
+        err_text = result.get("content", [{}])[0].get("text", "unknown error")
+        return {"ok": False, "error": f"flint-chart error: {err_text[:300]}"}
+
+    # 从 MCP 响应提取 ECharts spec
+    try:
+        text = result["content"][0]["text"]
+        spec_obj = json.loads(text)
+        echarts_spec = spec_obj.get("spec", {})
+    except (KeyError, json.JSONDecodeError, IndexError) as e:
+        return {"ok": False, "error": f"parse spec failed: {e}"}
+
+    # 注入标题 (Flint 不传 title, 手动加)
+    echarts_spec["title"] = {"text": title, "left": "center", "textStyle": {"fontSize": 14}}
+
+    # 返回 markdown 代码块, 前端识别 ```echarts 渲染
+    markdown = f"```echarts\n{json.dumps(echarts_spec, ensure_ascii=False)}\n```"
+    return {"ok": True, "markdown": markdown, "spec": echarts_spec}
+
+
+def _infer_semantic_types(data: list, x_field: str, y_field: str,
+                          color_field: str = "") -> dict:
+    """根据数据自动推断 Flint 语义类型。"""
+    types = {}
+    sample = data[0] if data else {}
+
+    for field in [x_field, y_field, color_field]:
+        if not field:
+            continue
+        val = sample.get(field)
+        if isinstance(val, (int, float)):
+            types[field] = "Quantity"
+        elif isinstance(val, str):
+            # 日期/时间检测
+            if re.match(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}", val):
+                types[field] = "Date"
+            else:
+                types[field] = "Nominal"
+        else:
+            types[field] = "Nominal"
+    return types
 
 
 def visit(url: str, goal: str = "") -> dict:

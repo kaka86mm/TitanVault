@@ -55,7 +55,7 @@ export const categoryMeta = {
 export const catOrder = ['AI', 'App', 'Ops', 'Agent'];
 
 export const llmModels = [
-  { name: 'Qwen3.6-35B-A3B', provider: 'llama.cpp (Vulkan)', type: 'local', status: 'active', ctx: '256K / 槽', rpm: 0, tpm: 0 },
+  { name: 'Qwopus-Coder-35B-A3B', provider: 'llama.cpp (Vulkan)', type: 'local', status: 'active', ctx: '256K / 槽', rpm: 0, tpm: 0 },
   { name: 'bge-m3', provider: 'llama.cpp (Vulkan)', type: 'embed', status: 'active', ctx: '8K', rpm: 0, tpm: 0 },
 ];
 
