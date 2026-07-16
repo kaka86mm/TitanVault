@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
 :root {
 --bg: #0a0a0c; --bg-elevated: #101014; --surface: #16161c; --surface-hover: #1e1e26;
@@ -153,6 +154,8 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-body);
 .report-area .md pre { background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: var(--space-3); overflow-x: auto; margin: var(--space-3) 0; }
 .report-area .md pre code { background: none; padding: 0; }
+.report-area .md .chart-block { width: 100%; height: 400px; margin: var(--space-4) 0;
+  border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
 .report-area .md blockquote { border-left: 3px solid var(--accent); padding-left: var(--space-3);
   margin: var(--space-3) 0; color: var(--fg-muted); }
 .report-area .md a { color: var(--accent); text-decoration: none; }
@@ -597,6 +600,12 @@ function handleEvent(event) {
     case 'visit_done':
       updateLastVisit(event.url, event.length, event.error);
       break;
+    case 'chart':
+      addActivity('chart', { title: event.title, chart_type: event.chart_type });
+      break;
+    case 'chart_done':
+      updateLastChart(event.title, event.error);
+      break;
     case 'thinking':
       updateThinking(event.turn, event.max_turns, event.forced);
       break;
@@ -657,6 +666,13 @@ function addActivity(type, data) {
       <div class="event-icon verify">🛡</div>
       <div class="event-content">${esc(data.label || '验证中...')}
         <div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`;
+  } else if (type === 'chart') {
+    item.innerHTML = `<div class="event-row">
+      <div class="event-icon">📊</div>
+      <div class="event-content">生成图表: <span class="query">${esc(data.title)}</span>
+        <span style="color:var(--fg-muted);font-size:11px">(${esc(data.chart_type || '')})</span>
+        <div class="thinking-dots"><span></span><span></span><span></span></div></div></div>`;
+    item.dataset.chart = data.title;
   }
   stream.appendChild(item);
   stream.scrollTop = stream.scrollHeight;
@@ -686,6 +702,21 @@ function updateLastVisit(url, length, error) {
       content.innerHTML += `<div class="detail" style="color:var(--danger)">→ 失败: ${error}</div>`;
     } else {
       content.innerHTML += `<div class="detail">→ ${length} 字符</div>`;
+    }
+  }
+}
+
+function updateLastChart(title, error) {
+  const items = document.querySelectorAll('[data-chart]');
+  const last = Array.from(items).find(el => el.dataset.chart === title);
+  if (last) {
+    const dots = last.querySelector('.thinking-dots');
+    if (dots) dots.remove();
+    const content = last.querySelector('.event-content');
+    if (error) {
+      content.innerHTML += `<div class="detail" style="color:var(--danger)">→ 失败: ${esc(error)}</div>`;
+    } else {
+      content.innerHTML += `<div class="detail" style="color:var(--success)">→ ✓ 已生成</div>`;
     }
   }
 }
@@ -733,6 +764,7 @@ async function showVersion(v) {
   const area = document.getElementById('reportArea');
   if (ver) {
     area.innerHTML = `<div class="md">${renderMarkdown(ver.content)}</div>`;
+    renderCharts(area); // 渲染 echarts 图表块
     // highlight active tab
     const tabs = document.querySelectorAll('.version-tab');
     tabs.forEach(t => { if (t.textContent.startsWith('v' + v)) t.classList.add('active'); });
@@ -792,7 +824,14 @@ function renderMarkdown(md) {
   if (!md) return '';
   let html = esc(md);
   // code blocks (先处理, 避免内部内容被其他规则影响)
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (m, lang, code) => `<pre><code>${code}</code></pre>`);
+  // echarts blocks → 占位 div (renderCharts 在 renderMarkdown 后渲染)
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (m, lang, code) => {
+    if (lang === 'echarts') {
+      // 用 data-echarts 属性携带 spec JSON, renderCharts() 读取并初始化
+      return `<div class="chart-block" data-echarts="${encodeURIComponent(code)}"></div>`;
+    }
+    return `<pre><code>${code}</code></pre>`;
+  });
   // tables: | col | col | + |---|---|
   html = html.replace(/((?:^\|.*\|\s*\n?)+)/gm, (tableBlock) => {
     const lines = tableBlock.trim().split('\n').filter(l => l.trim());
@@ -840,10 +879,29 @@ function renderMarkdown(md) {
   html = html.split(/\n\n+/).map(p => {
     p = p.trim();
     if (!p) return '';
-    if (p.match(/^<(h\d|ul|ol|pre|blockquote|hr|table)/)) return p;
+    if (p.match(/^<(h\d|ul|ol|pre|blockquote|hr|table|div)/)) return p;
     return `<p>${p.replace(/\n/g,'<br>')}</p>`;
   }).join('\n');
   return html;
+}
+
+// ── ECharts 渲染: 将 .chart-block[data-echarts] 占位 div 渲染为图表 ──
+function renderCharts(container) {
+  if (typeof echarts === 'undefined') return; // CDN 未加载 (离线环境)
+  container.querySelectorAll('.chart-block[data-echarts]').forEach((el, i) => {
+    try {
+      const raw = decodeURIComponent(el.dataset.echarts);
+      const spec = JSON.parse(raw);
+      // 给容器固定高度
+      el.style.cssText = 'width:100%;height:400px;margin:16px 0;border:1px solid var(--border);border-radius:8px;overflow:hidden';
+      const chart = echarts.init(el, null, { renderer: 'canvas' });
+      chart.setOption(spec);
+      // 窗口 resize 时重绘
+      window.addEventListener('resize', () => chart.resize(), { once: true });
+    } catch (e) {
+      el.innerHTML = `<div style="padding:16px;color:var(--warn);font-size:13px">⚠ 图表渲染失败: ${esc(String(e).slice(0,100))}</div>`;
+    }
+  });
 }
 
 // ── Utils ──

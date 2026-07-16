@@ -128,10 +128,12 @@ services:
       HTTP_PROXY: "http://host-gateway:7890"
       HTTPS_PROXY: "http://host-gateway:7890"
       # NO_PROXY: 内部服务不走代理 (QUEST/SearXNG/MinerU/LiteLLM 等本机服务)
-      NO_PROXY: "host-gateway,localhost,127.0.0.1,fast-research,searxng,litellm,titanvault"
+      NO_PROXY: "host-gateway,localhost,127.0.0.1,fast-research,searxng,litellm,titanvault,mcpjungle"
       JINA_READER_URL: "https://r.jina.ai"
       # agent-reach bridge (宿主 :18061, 转发到 Exa/Twitter/小红书)
       REACH_BRIDGE_URL: "http://host-gateway:18061"
+      # MCP 网关 (mcpjungle, flint-chart-mcp 图表生成)
+      MCPJUNGLE_URL: "http://host-gateway:8086"
       # SMTP (邮件发送, 留空则不发邮件; 填了定时研究报告会自动发)
       SMTP_HOST: "${SMTP_HOST:-}"
       SMTP_PORT: "${SMTP_PORT:-587}"

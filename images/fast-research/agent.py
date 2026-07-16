@@ -20,7 +20,7 @@ from openai import OpenAI
 from tools import search as tool_search, visit as tool_visit, \
     exa_search as tool_exa, twitter_search as tool_twitter, \
     xiaohongshu_search as tool_xhs, wechat_search as tool_wechat, \
-    verify_url as tool_verify_url
+    verify_url as tool_verify_url, make_chart as tool_make_chart
 
 # ============================================================================
 # Prompts
@@ -36,6 +36,10 @@ Your goal: thoroughly research the user's question using web tools, then write a
 - xiaohongshu: 小红书 reviews. name="xiaohongshu".
 - wechat: 微信公众号 articles. name="wechat".
 - visit: Read a URL in detail. {{"name":"visit","arguments":{{"url":["URL"],"goal":"..."}}}}
+- make_chart: Generate a chart from data you collected. Use for comparisons, trends, rankings.
+  {{"name":"make_chart","arguments":{{"title":"Chart Title","chart_type":"Bar Chart","x_field":"company","y_field":"score","data":[{{"company":"A","score":90}},{{"company":"B","score":85}}],"color_field":"metric"}}}}
+  chart_type options: Bar Chart, Line Chart, Pie Chart, Scatter Plot, Area Chart, Radar Chart, Boxplot.
+  Only use REAL data from pages you visited — do NOT invent numbers.
 
 ## Research Process
 1. MUST call tools. Do NOT answer from memory or general knowledge.
@@ -70,6 +74,9 @@ Write a detailed, well-structured report using ALL gathered information. Follow 
 8. Do NOT include a table of contents.
 9. Aim for **2000+ words** if enough data is available.
 10. Every key claim, number, or statistic MUST have a citation URL.
+11. When the report contains **comparative data** (vs comparisons, rankings, benchmarks, market share,
+    time trends), call `make_chart` to generate a visual chart. Place the chart right after the relevant
+    section. Use Bar Chart for comparisons, Line Chart for trends, Pie Chart for proportions.
 
 This is very important to my career. Assume the current date is {today}.
 
@@ -103,6 +110,7 @@ When done, output the COMPLETE updated report in markdown.
 - twitter: {{"name": "twitter", "arguments": {{"query": ["query"]}}}} (social discussions/opinions — USE THIS for social media, NOT site:weibo.com)
 - xiaohongshu: {{"name": "xiaohongshu", "arguments": {{"query": ["query"]}}}} (中文生活消费/真实评价)
 - visit: {{"name": "visit", "arguments": {{"url": ["url"], "goal": "..."}}}}
+- make_chart: {{"name": "make_chart", "arguments": {{"title": "...", "chart_type": "Bar Chart", "x_field": "...", "y_field": "...", "data": [{{"...": 0}}], "color_field": "..."}}}}
 
 To call a tool:
 <tool_call>
@@ -363,6 +371,7 @@ class ResearchAgent:
                 )
                 if is_real_report:
                     report = self._verify_report(report, context, emit)
+                    report = self._auto_chart_from_tables(report, emit)
                     context.add_version(report)
                     emit({"type": "report", "version": context.current_version,
                           "content": report, "changes": "initial" if not is_iteration else "updated"})
@@ -451,6 +460,7 @@ class ResearchAgent:
 
         # 幻觉验证 (强制总结的也要验证)
         report = self._verify_report(report, context, emit)
+        report = self._auto_chart_from_tables(report, emit)
         context.add_version(report, changes="forced summary")
         emit({"type": "report", "version": context.current_version,
               "content": report, "changes": "forced"})
@@ -532,6 +542,171 @@ class ResearchAgent:
               "verified": reachable, "trust": source_note})
 
         return report + "\n".join(summary_lines)
+
+    def _auto_chart_from_tables(self, report: str, emit: Callable) -> str:
+        """扫描报告中的 markdown 表格, 对含数值对比数据的自动生成图表。
+
+        策略:
+        1. 找所有 markdown 表格 (| ... | 格式)
+        2. 检测是否有 ≥2 列包含数值 (TFLOPS/GB/W/%/亿元 等)
+        3. 取第一个表头列作为 x_field, 数值最多的列作为 y_field
+        4. 调 make_chart 生成 ECharts 柱状图, 插入表格后
+        """
+        # 已有图表就不重复生成
+        if "```echarts" in report:
+            return report
+
+        tables = self._extract_markdown_tables(report)
+        if not tables:
+            return report
+
+        charts_inserted = 0
+        for tbl in tables[:2]:  # 最多前 2 个表格配图
+            chart_md = self._table_to_chart(tbl, emit)
+            if chart_md:
+                # 在表格后面插入图表
+                tbl_end = tbl["end_pos"]
+                # 找到表格后的第一个空行位置
+                insert_point = report.find("\n\n", tbl_end)
+                if insert_point < 0:
+                    insert_point = len(report)
+                report = report[:insert_point] + "\n\n" + chart_md + report[insert_point:]
+                charts_inserted += 1
+                # 更新后续表格的位置偏移
+                offset = len(chart_md) + 2
+                for t in tables:
+                    t["start_pos"] += offset
+                    t["end_pos"] += offset
+
+        if charts_inserted:
+            emit({"type": "chart_auto", "count": charts_inserted})
+        return report
+
+    def _extract_markdown_tables(self, report: str) -> list:
+        """提取报告中的 markdown 表格, 返回 [{header, rows, start_pos, end_pos}]。"""
+        tables = []
+        lines = report.split("\n")
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if line.startswith("|") and line.endswith("|"):
+                # 表格起始
+                start = i
+                header_cells = [c.strip() for c in line.strip("|").split("|")]
+                # 下一行是分隔符
+                if i + 1 < len(lines) and re.match(r"^\|[\s:|-]+$", lines[i + 1].strip()):
+                    i += 2  # 跳过分隔符
+                    rows = []
+                    while i < len(lines) and lines[i].strip().startswith("|") and lines[i].strip().endswith("|"):
+                        row_cells = [c.strip() for c in lines[i].strip("|").split("|")]
+                        rows.append(row_cells)
+                        i += 1
+                    if rows:
+                        # 计算字符位置
+                        start_pos = sum(len(lines[j]) + 1 for j in range(start))
+                        end_pos = sum(len(lines[j]) + 1 for j in range(i))
+                        tables.append({
+                            "header": header_cells,
+                            "rows": rows,
+                            "start_pos": start_pos,
+                            "end_pos": end_pos,
+                        })
+                else:
+                    i += 1
+            else:
+                i += 1
+        return tables
+
+    def _table_to_chart(self, tbl: dict, emit: Callable) -> str:
+        """将一个含数值的表格转为 ECharts 图表 markdown。
+
+        检测: 至少 2 列有可解析的数值 (TFLOPS, GB, W, %, 亿元, 万元等)。
+        """
+        header = tbl["header"]
+        rows = tbl["rows"]
+        if len(header) < 2 or len(rows) < 2:
+            return ""
+
+        # 解析每个单元格的数值
+        def parse_number(s):
+            """从文本中提取数值: '256 TFLOPS' → 256, '96 GB' → 96
+            跳过型号名里的数字 (如 DCU8200, C600): 要求数字后有单位, 或数字独立出现。
+            """
+            s = s.strip().replace(",", "").replace("，", "")
+            if not s or s in ("—", "未披露", "N/A", "未知", "-"):
+                return None
+            # 优先匹配 "数字 + 单位" (TFLOPS/GB/W 等)
+            m = re.search(r"(\d+(?:\.\d+)?)\s*(TFLOPS|PFLOPS|GB|TB|MB|GHz|MHz|亿元|千万|万元|万|W|%|fps|TOPS)", s, re.IGNORECASE)
+            if m:
+                try:
+                    return float(m.group(1))
+                except ValueError:
+                    return None
+            # 纯数字 (不含字母, 避免型号 DCU8200)
+            if re.match(r"^\d+(?:\.\d+)?$", s):
+                try:
+                    return float(s)
+                except ValueError:
+                    return None
+            return None
+
+        # 分析每列的数值含量
+        col_numbers = {}  # col_idx → list of numbers
+        for col_idx in range(len(header)):
+            nums = []
+            for row in rows:
+                if col_idx < len(row):
+                    n = parse_number(row[col_idx])
+                    if n is not None:
+                        nums.append(n)
+            if len(nums) >= len(rows) * 0.5:  # ≥50% 行有数值
+                col_numbers[col_idx] = nums
+
+        if not col_numbers:
+            return ""
+
+        # 第一列作为 x_field (通常是名称/型号)
+        x_col = 0
+        x_field = header[x_col] if header[x_col] else "category"
+        # 从数值列中选 y_field (排除 x_col, 选数值最多的)
+        y_candidates = {c: n for c, n in col_numbers.items() if c != x_col}
+        if not y_candidates:
+            # 唯一数值列就是第一列, 不适合做图
+            return ""
+        y_col = max(y_candidates.keys(), key=lambda c: len(y_candidates[c]))
+        y_field = header[y_col] if header[y_col] else "value"
+
+        # 如果只有一列有数值, 做单系列柱状图
+        # 如果多列有数值, 尝试做多系列分组图
+        data = []
+        for row in rows:
+            if x_col < len(row) and y_col < len(row):
+                x_val = row[x_col].strip()[:20]  # 截短标签
+                y_val = parse_number(row[y_col])
+                if y_val is not None:
+                    data.append({x_field: x_val, y_field: y_val})
+
+        if len(data) < 2:
+            return ""
+
+        # 图表标题用 y_field
+        title = f"{y_field} 对比"
+        emit({"type": "chart", "title": title, "chart_type": "Bar Chart", "auto": True})
+
+        r = tool_make_chart(
+            title=title,
+            chart_type="Bar Chart",
+            x_field=x_field,
+            y_field=y_field,
+            data=data,
+        )
+        if r.get("ok"):
+            emit({"type": "chart_done", "title": title, "auto": True})
+            return r["markdown"]
+        else:
+            emit({"type": "chart_done", "title": title, "auto": True,
+                  "error": r.get("error", "")})
+            return ""
 
     def _build_summary_prompt(self, question: str, context: ResearchContext,
                               is_iteration: bool) -> str:
@@ -858,6 +1033,40 @@ class ResearchAgent:
                     emit({"type": "search_done", "query": q, "count": 0,
                           "engine": "wechat", "error": r.get("error", "")})
             return "\n\n".join(all_results) if all_results else "[微信: no results]"
+
+        elif name == "make_chart":
+            # 通过 mcpjungle → flint-chart-mcp 生成 ECharts 图表
+            title = args.get("title", "Chart")
+            chart_type = args.get("chart_type", "Bar Chart")
+            x_field = args.get("x_field", "")
+            y_field = args.get("y_field", "")
+            color_field = args.get("color_field", "")
+            data = args.get("data", [])
+            # data 可能是 JSON 字符串
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError:
+                    data = []
+
+            emit({"type": "chart", "title": title, "chart_type": chart_type})
+
+            if not data or not x_field or not y_field:
+                return "[make_chart: missing data, x_field, or y_field]"
+
+            r = tool_make_chart(
+                title=title, chart_type=chart_type,
+                x_field=x_field, y_field=y_field, data=data,
+                color_field=color_field,
+            )
+            if r.get("ok"):
+                emit({"type": "chart_done", "title": title})
+                # 返回 markdown 代码块, QUEST 直接嵌入报告
+                return f"Chart generated successfully:\n{r['markdown']}"
+            else:
+                emit({"type": "chart_done", "title": title,
+                      "error": r.get("error", "")})
+                return f"[make_chart failed: {r.get('error', 'unknown')}]"
 
         return f"[Unknown tool: {name}]"
 
