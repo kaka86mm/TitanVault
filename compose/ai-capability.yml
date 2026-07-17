@@ -91,7 +91,7 @@ services:
 
   mineru-web-frontend:
     # lpdswing 官方前端 (nginx, 反代 backend + minio)。配置在 config/mineru/nginx.conf
-    image: lpdswing/mineru-web-frontend:v3.3.1
+    image: lpdswing/mineru-web-frontend:v3.4.0
     profiles: [ai-capability]
     restart: unless-stopped
     environment:
@@ -108,7 +108,7 @@ services:
   mineru-web-backend:
     # lpdswing 官方后端 (FastAPI, sqlite 任务库)。调 host.docker.internal:18080 推理。
     # parsed.py 是生产验证的补丁 (533行), 覆盖镜像内 app/api/parsed.py (修复解析展示)。
-    image: lpdswing/mineru-web-backend:v3.3.1
+    image: lpdswing/mineru-web-backend:v3.4.0
     profiles: [ai-capability]
     restart: unless-stopped
     environment:
@@ -137,7 +137,7 @@ services:
 
   mineru-web-worker:
     # celery worker (异步解析)。与 backend 同镜像, command 覆盖。
-    image: lpdswing/mineru-web-backend:v3.3.1
+    image: lpdswing/mineru-web-backend:v3.4.0
     profiles: [ai-capability]
     restart: unless-stopped
     command: python3 run_worker.py
