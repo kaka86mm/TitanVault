@@ -45,9 +45,11 @@ ENV PATH="/opt/conda/bin:$PATH" \
     AHAMVOICE_PORT=8765 \
     AHAMVOICE_HOME=/data \
     AHAMVOICE_MODELS_DIR=/models \
-    AHAMVOICE_ASR_DEVICE=cuda
+    AHAMVOICE_ASR_DEVICE=cuda \
+    AHAMVOICE_ASR_ENGINE=funasr
 # FunASR/torch 用 "cuda" 字符串触发 GPU 路径; ROCm 的 HIP 后端响应 device="cuda"
 # (HIP cuda 兼容层, gfx1151 已验证 torch.cuda.is_available()=True)。
+# AHAMVOICE_ASR_ENGINE: funasr (默认) / moss (需 BUILD_MOSS=1 构建镜像 + 挂载 MOSS 模型)
 
 VOLUME ["/models", "/data"]
 EXPOSE 8765

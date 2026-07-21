@@ -600,6 +600,14 @@ def transcribe_with_moss(recording_id: str, user: dict[str, Any]) -> dict[str, A
 
     tmp_wav = None
     try:
+        # 前置检查: MOSS 包是否安装 (BUILD_MOSS=0 的镜像没有)
+        try:
+            import moss_transcribe_diarize  # noqa: F401
+        except ImportError:
+            raise RuntimeError(
+                "MOSS 引擎未安装。请用 --build-arg BUILD_MOSS=1 重新构建镜像, "
+                "或改回 AHAMVOICE_ASR_ENGINE=funasr"
+            )
         model, processor = _get_moss_model()
         with db() as conn:
             update_task(conn, task_id, "running", 10)
