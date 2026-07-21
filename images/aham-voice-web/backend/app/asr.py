@@ -499,8 +499,13 @@ def transcribe_with_moss(recording_id: str, user: dict[str, Any]) -> dict[str, A
         sentence_info = _moss_segments_to_sentence_info(segments)
         # 热词替换 (跟 funasr 路径一样)
         hotwords_map = package.get("replacement_map", {})
+        # 声纹匹配: MOSS 输出了时间戳, 可以从原始音频按区间提取片段做声纹比对
+        # (跟 funasr 路径完全一致, 复用 CAM++ 声纹验证器)
+        with db() as conn:
+            update_task(conn, task_id, "running", 82)
+        speaker_matches = match_speaker_profiles(rec, sentence_info)
         merged_segments = sentence_info_to_transcript_segments(
-            sentence_info, hotwords_map, {},  # {} = 不做声纹匹配
+            sentence_info, hotwords_map, speaker_matches,
         )
 
         with db() as conn:
