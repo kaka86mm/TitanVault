@@ -227,6 +227,12 @@ services:
       AHAMVOICE_HOME: /data
       AHAMVOICE_MODELS_DIR: /models
       AHAMVOICE_PORT: "8765"
+      # ASR 引擎: funasr (默认, Paraformer+CAM++ 带声纹匹配) / moss (端到端转写+分离)
+      AHAMVOICE_ASR_ENGINE: ${AHAMVOICE_ASR_ENGINE:-funasr}
+      # MOSS 模型路径 (AHAMVOICE_ASR_ENGINE=moss 时生效)
+      AHAMVOICE_MOSS_MODEL: /models/moss-transcribe-diarize
+      # 启用 ROCm Efficient Attention (MOSS 长音频必需, 防 OOM)
+      TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL: "1"
       # LLM: 指向发行版 LiteLLM (复用本机 llama.cpp 35B), 会议纪要零配置走本机
       LLM_API_BASE: http://litellm:4000/v1
       LLM_API_KEY: ${LITELLM_MASTER_KEY:?must be set}
@@ -236,6 +242,7 @@ services:
     volumes:
       - ${DATA_DIR:-/data}/ahamvoice/data:/data
       # ASR 模型 (~4GB, 首次启动自动从 modelscope 拉) 挂全局模型库统一管理
+      # MOSS 模型 (1.8GB) 也放这里: /data/models/ahamvoice/moss-transcribe-diarize/
       - ${DATA_DIR:-/data}/models/ahamvoice:/models
     ports: ["8765:8765"]
     depends_on:

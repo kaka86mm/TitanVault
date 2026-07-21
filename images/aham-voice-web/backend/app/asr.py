@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from . import state
 from .config import (
     PARAFORMER, VAD, PUNC, CAMPLUS, FFMPEG, env_int,
+    ASR_ENGINE, MOSS_MODEL, TMP,
 )
 from .db import (
     db, now, rowdict, rowsdict, safe_json, seconds_label,
@@ -353,7 +354,206 @@ def sentence_info_to_transcript_segments(
 
 
 
+# ---------------------------------------------------------------------------
+# MOSS-Transcribe-Diarize 引擎 (端到端转写+说话人分离)
+# ---------------------------------------------------------------------------
+
+# 懒加载 MOSS 模型 (避免 funasr 模式下不需要时也加载)
+_moss_model = None
+_moss_processor = None
+_moss_lock = threading.Lock()
+
+
+def _get_moss_model():
+    """懒加载 MOSS-Transcribe-Diarize 模型。"""
+    global _moss_model, _moss_processor
+    if _moss_model is not None:
+        return _moss_model, _moss_processor
+    with _moss_lock:
+        if _moss_model is not None:
+            return _moss_model, _moss_processor
+        import torch
+        os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")
+        from transformers import AutoModelForCausalLM, AutoProcessor
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+        print(f"[moss] loading from {MOSS_MODEL} on {device} {dtype}", flush=True)
+        _moss_model = (
+            AutoModelForCausalLM.from_pretrained(
+                str(MOSS_MODEL), trust_remote_code=True, dtype="auto",
+                attn_implementation="sdpa",
+            )
+            .to(dtype=dtype)
+            .to(device)
+            .eval()
+        )
+        _moss_processor = AutoProcessor.from_pretrained(
+            str(MOSS_MODEL), trust_remote_code=True
+        )
+        print(f"[moss] loaded, vram={torch.cuda.memory_allocated()/1024/1024/1024:.2f}GB", flush=True)
+        return _moss_model, _moss_processor
+
+
+def _audio_to_16k_wav(src_path: str) -> str:
+    """把任意音频格式转为 16kHz mono wav (MOSS 需要)。返回临时文件路径。"""
+    import tempfile
+    suffix = ".wav"
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix, dir=str(TMP))
+    os.close(fd)
+    cmd = [
+        str(FFMPEG), "-y", "-i", src_path,
+        "-ar", "16000", "-ac", "1", "-f", "wav", tmp_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, timeout=600)
+    if result.returncode != 0:
+        os.unlink(tmp_path)
+        raise RuntimeError(f"ffmpeg failed: {result.stderr.decode()[:300]}")
+    return tmp_path
+
+
+def _moss_segments_to_sentence_info(segments: list) -> list[dict[str, Any]]:
+    """把 MOSS parse_transcript 的输出转成 FunASR sentence_info 兼容格式。
+
+    FunASR 的 sentence_info 用 start/end (毫秒) + spk; MOSS 输出秒。
+    """
+    sentence_info = []
+    for seg in segments:
+        sentence_info.append({
+            "text": seg.text,
+            "start": int(seg.start * 1000),   # 秒 → 毫秒
+            "end": int(seg.end * 1000),
+            "spk": seg.speaker,  # S01, S02...
+        })
+    return sentence_info
+
+
+def transcribe_with_moss(recording_id: str, user: dict[str, Any]) -> dict[str, Any]:
+    """用 MOSS-Transcribe-Diarize 做端到端转写+说话人分离。
+
+    输出跟 transcribe_recording 一样写入 transcript_segments 表。
+    不做声纹匹配 (MOSS 不输出 speaker embedding, S01 就是 S01)。
+    """
+    import torch
+
+    with db() as conn:
+        rec = can_access_recording(conn, recording_id, user)
+        task_id = create_task(conn, recording_id, rec["title"], "MOSS端到端转写+分离")
+        conn.execute("update recordings set asr_status = ?, updated_at = ? where id = ?", ("running", now(), recording_id))
+        conn.execute("delete from transcript_segments where recording_id = ?", (recording_id,))
+        conn.execute("delete from summaries where recording_id = ?", (recording_id,))
+        conn.execute("delete from emotion_analyses where recording_id = ?", (recording_id,))
+        conn.execute("update recordings set summary_status = ? where id = ?", ("pending", recording_id))
+        conn.commit()
+
+    tmp_wav = None
+    try:
+        model, processor = _get_moss_model()
+        with db() as conn:
+            update_task(conn, task_id, "running", 10)
+
+        # 音频转码 → 16kHz wav
+        src_path = str(Path(rec["file_path"]))
+        tmp_wav = _audio_to_16k_wav(src_path)
+        with db() as conn:
+            update_task(conn, task_id, "running", 20)
+
+        # 构建热词 prompt (如果有)
+        with db() as conn:
+            rec_for_package = rowdict(conn.execute("select * from recordings where id = ?", (recording_id,)).fetchone()) or rec
+            package = build_hotword_package(conn, rec_for_package, user)
+        hotword_terms = package.get("asr_terms", [])
+        from moss_transcribe_diarize.inference_utils import (
+            build_transcription_messages, generate_transcription, resolve_device,
+        )
+        # 默认 prompt + 热词
+        prompt = None
+        if hotword_terms:
+            prompt = (
+                "请将音频转写为文本，每一段需以起始时间戳和说话人编号"
+                "（[S01]、[S02]、[S03]…）开头，正文为对应的语音内容，"
+                "并在段末标注结束时间戳，以清晰标明该段语音范围。"
+                f"热词提示：{', '.join(hotword_terms)}"
+            )
+        messages = build_transcription_messages(tmp_wav, prompt=prompt) if prompt else build_transcription_messages(tmp_wav)
+
+        with db() as conn:
+            update_task(conn, task_id, "running", 30)
+
+        device = next(model.parameters()).device
+        dtype = next(model.parameters()).dtype
+        with _moss_lock:
+            result = generate_transcription(
+                model, processor, messages,
+                max_new_tokens=16384, do_sample=False,
+                device=device, dtype=dtype,
+            )
+        with db() as conn:
+            update_task(conn, task_id, "running", 80)
+
+        from moss_transcribe_diarize import parse_transcript
+        segments = list(parse_transcript(result["text"]))
+        if not segments:
+            raise RuntimeError("MOSS returned empty transcript")
+
+        # 转成 sentence_info 兼容格式
+        sentence_info = _moss_segments_to_sentence_info(segments)
+        # 热词替换 (跟 funasr 路径一样)
+        hotwords_map = package.get("replacement_map", {})
+        merged_segments = sentence_info_to_transcript_segments(
+            sentence_info, hotwords_map, {},  # {} = 不做声纹匹配
+        )
+
+        with db() as conn:
+            update_task(conn, task_id, "running", 90)
+            inserted = 0
+            for item in merged_segments:
+                conn.execute(
+                    """
+                    insert into transcript_segments(id,recording_id,start_sec,end_sec,start_label,speaker,speaker_name,voiceprint_id,speaker_confidence,text,confidence)
+                    values(?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        item["id"], recording_id,
+                        item["start_sec"], item["end_sec"], item["start_label"],
+                        item["speaker"], item.get("speaker_name"),
+                        item.get("voiceprint_id"), item.get("speaker_confidence"),
+                        item["text"], item.get("confidence"),
+                    ),
+                )
+                inserted += 1
+            if inserted == 0:
+                raise RuntimeError("MOSS produced no usable transcript segments")
+            conn.execute(
+                "update recordings set asr_status = ?, updated_at = ? where id = ?",
+                ("done", now(), recording_id),
+            )
+            spk_count = len({s.speaker for s in segments})
+            update_task(conn, task_id, "done", 100)
+            audit(
+                conn, user, "recording",
+                f"完成录音转写和说话人分离（MOSS引擎）：{rec['title']}，"
+                f"生成 {inserted} 个语义发言段，检测到 {spk_count} 个说话人。",
+            )
+        return {"recording_id": recording_id, "segments": inserted, "speakers": spk_count}
+    except Exception as exc:
+        with db() as conn:
+            conn.execute(
+                "update recordings set asr_status = ?, updated_at = ? where id = ?",
+                ("failed", now(), recording_id),
+            )
+            update_task(conn, task_id, "failed", 100, str(exc))
+            audit(conn, user, "recording", f"录音转写失败（MOSS引擎）：{rec['title']}。")
+        print(f"[error] moss transcription: {type(exc).__name__}: {exc}", flush=True)
+        raise HTTPException(status_code=500, detail="转写失败，请查看日志") from exc
+    finally:
+        if tmp_wav and os.path.exists(tmp_wav):
+            os.unlink(tmp_wav)
+
+
 def transcribe_recording(recording_id: str, user: dict[str, Any], segment_seconds: int = 60) -> dict[str, Any]:
+    # ASR 引擎分发: moss 模式走端到端路径, 否则走默认 FunASR
+    if ASR_ENGINE == "moss":
+        return transcribe_with_moss(recording_id, user)
     with db() as conn:
         rec = can_access_recording(conn, recording_id, user)
         task_id = create_task(conn, recording_id, rec["title"], "VAD+说话人分离转写")
