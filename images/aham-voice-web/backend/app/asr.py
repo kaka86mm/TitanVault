@@ -427,6 +427,158 @@ def _moss_segments_to_sentence_info(segments: list) -> list[dict[str, Any]]:
     return sentence_info
 
 
+def _merge_moss_segments_for_voiceprint(sentence_info: list[dict[str, Any]], target_seconds: float = 20.0) -> list[dict[str, Any]]:
+    """合并同说话人的相邻 segment, 给声纹匹配提供更长的音频区间。
+
+    MOSS 的 segment 平均 6-7s, CAM++ 在短片段上分数偏低。
+    把同说话人相邻的段合并到 ~target_seconds, 声纹提取更稳定。
+    只用于声纹匹配, 不影响 transcript_segments 表的写入。
+    """
+    if not sentence_info:
+        return sentence_info
+    merged: list[dict[str, Any]] = []
+    current = None
+    for item in sentence_info:
+        spk = item.get("spk", "unknown")
+        start_ms = int(item.get("start", 0))
+        end_ms = int(item.get("end", start_ms))
+        if current is None:
+            current = {"spk": spk, "start": start_ms, "end": end_ms, "text": item.get("text", "")}
+            continue
+        same_speaker = current["spk"] == spk
+        gap = (start_ms - current["end"]) / 1000.0
+        current_duration = (current["end"] - current["start"]) / 1000.0
+        if same_speaker and gap <= 3.0 and current_duration < target_seconds:
+            current["end"] = max(current["end"], end_ms)
+            current["text"] += item.get("text", "")
+        else:
+            merged.append(current)
+            current = {"spk": spk, "start": start_ms, "end": end_ms, "text": item.get("text", "")}
+    if current:
+        merged.append(current)
+    return merged
+
+
+def _voiceprint_fallback_match(rec: dict[str, Any], sentence_info: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """MOSS 声纹匹配兜底: 标准阈值未命中时, 放宽 margin 判定。
+
+    MOSS 分割粒度比 FunASR 粗, segment 边界可能含他人声音, 导致 CAM++ 分数偏低。
+    策略: 对每个 speaker, 取所有片段的中位分数 vs 每个 profile,
+    如果最高分≥0.4 且领先次选≥0.15, 认可匹配。
+    """
+    import tempfile
+    from .voiceprint import get_speaker_verifier, extract_interval, ranked_voiceprint_intervals, voiceprint_match_settings
+    from .config import TMP
+    from statistics import median
+
+    with db() as conn:
+        from .voiceprint import load_speaker_profiles
+        profiles = load_speaker_profiles(conn, rec.get("team_id"), rec.get("owner_id"))
+    if not profiles:
+        return {}
+
+    settings = voiceprint_match_settings()
+    intervals = ranked_voiceprint_intervals(
+        sentence_info, int(settings["sample_limit"]), float(settings["min_sample_seconds"]),
+    )
+    if not intervals:
+        return {}
+
+    verifier = get_speaker_verifier()
+    matches: dict[str, dict[str, Any]] = {}
+    with tempfile.TemporaryDirectory(dir=str(TMP)) as tmp:
+        tmpdir = Path(tmp)
+        for spk, ranges in intervals.items():
+            profile_scores: dict[str, list[float]] = {p["id"]: [] for p in profiles}
+            for idx, (start, end) in enumerate(ranges):
+                sample = tmpdir / f"fb_{spk}_{idx}.wav"
+                extract_interval(Path(rec["file_path"]), sample, start, min(end, start + float(settings["max_sample_seconds"])))
+                if not sample.exists():
+                    continue
+                for p in profiles:
+                    try:
+                        with _asr_lock:
+                            result = verifier([str(sample), p["sample_path"]])
+                    except Exception:
+                        continue
+                    if isinstance(result, list):
+                        result = result[0] if result else {}
+                    score = float(result.get("score", -1.0))
+                    if score >= 0:
+                        profile_scores[p["id"]].append(score)
+            # 中位分数 per profile
+            name_scores: dict[str, float] = {}
+            name_ids: dict[str, str] = {}
+            for p in profiles:
+                scores = profile_scores.get(p["id"], [])
+                if scores:
+                    name_scores[p["name"]] = median(sorted(scores)[:min(5, len(scores))])
+                    name_ids[p["name"]] = p["id"]
+            if not name_scores:
+                continue
+            ranked = sorted(name_scores.items(), key=lambda x: x[1], reverse=True)
+            best_name, best_score = ranked[0]
+            second_score = ranked[1][1] if len(ranked) > 1 else -1.0
+            margin = best_score - second_score if second_score >= 0 else 1.0
+            if best_score >= 0.4 and margin >= 0.15:
+                matches[spk] = {
+                    "name": best_name,
+                    "voiceprint_id": name_ids.get(best_name),
+                    "score": round(best_score, 5),
+                }
+                print(f"[moss-fallback] {spk} → {best_name} (score={best_score:.3f} margin={margin:.3f})", flush=True)
+    # 排除法: 如果部分 speaker 匹配成功, 未匹配的 speaker 优先选剩余 profile
+    # (会议场景: S01 已是赵耀, S02 大概率不是赵耀, 从剩余宁剑/孙岚里选最高分)
+    used_names = {m["name"] for m in matches.values()}
+    unmatched_spks = [spk for spk in intervals if spk not in matches]
+    remaining_profiles = [p for p in profiles if p["name"] not in used_names]
+    if unmatched_spks and remaining_profiles and len(unmatched_spks) <= len(remaining_profiles):
+        # 重跑未匹配 speaker vs 剩余 profile 的分数
+        with tempfile.TemporaryDirectory(dir=str(TMP)) as tmp:
+            tmpdir = Path(tmp)
+            for spk in unmatched_spks:
+                ranges = intervals.get(spk, [])
+                if not ranges:
+                    continue
+                profile_scores = {p["id"]: [] for p in remaining_profiles}
+                for idx, (start, end) in enumerate(ranges):
+                    sample = tmpdir / f"ex_{spk}_{idx}.wav"
+                    extract_interval(Path(rec["file_path"]), sample, start, min(end, start + float(settings["max_sample_seconds"])))
+                    if not sample.exists():
+                        continue
+                    for p in remaining_profiles:
+                        try:
+                            with _asr_lock:
+                                result = verifier([str(sample), p["sample_path"]])
+                        except Exception:
+                            continue
+                        if isinstance(result, list):
+                            result = result[0] if result else {}
+                        score = float(result.get("score", -1.0))
+                        if score >= 0:
+                            profile_scores[p["id"]].append(score)
+                name_scores = {}
+                name_ids = {}
+                for p in remaining_profiles:
+                    scores = profile_scores.get(p["id"], [])
+                    if scores:
+                        name_scores[p["name"]] = median(sorted(scores)[:min(5, len(scores))])
+                        name_ids[p["name"]] = p["id"]
+                if name_scores:
+                    best_name = max(name_scores, key=name_scores.get)
+                    best_score = name_scores[best_name]
+                    if best_score >= 0.25:  # 排除法后阈值更低
+                        matches[spk] = {
+                            "name": best_name,
+                            "voiceprint_id": name_ids.get(best_name),
+                            "score": round(best_score, 5),
+                        }
+                        used_names.add(best_name)
+                        remaining_profiles = [p for p in remaining_profiles if p["name"] != best_name]
+                        print(f"[moss-exclusion] {spk} → {best_name} (score={best_score:.3f} 排除法)", flush=True)
+    return matches
+
+
 def transcribe_with_moss(recording_id: str, user: dict[str, Any]) -> dict[str, Any]:
     """用 MOSS-Transcribe-Diarize 做端到端转写+说话人分离。
 
@@ -499,11 +651,16 @@ def transcribe_with_moss(recording_id: str, user: dict[str, Any]) -> dict[str, A
         sentence_info = _moss_segments_to_sentence_info(segments)
         # 热词替换 (跟 funasr 路径一样)
         hotwords_map = package.get("replacement_map", {})
-        # 声纹匹配: MOSS 输出了时间戳, 可以从原始音频按区间提取片段做声纹比对
-        # (跟 funasr 路径完全一致, 复用 CAM++ 声纹验证器)
+        # 声纹匹配: MOSS segment 平均较短 (6-7s vs FunASR 16s),
+        # 需要合并同说话人的相邻段, 给 CAM++ 足够长的语音 (15s+) 做声纹提取
+        sentence_info_for_vp = _merge_moss_segments_for_voiceprint(sentence_info, target_seconds=20)
         with db() as conn:
             update_task(conn, task_id, "running", 82)
-        speaker_matches = match_speaker_profiles(rec, sentence_info)
+        speaker_matches = match_speaker_profiles(rec, sentence_info_for_vp)
+        # MOSS 兜底: 标准阈值 (0.66) 对 MOSS 分割的短片段偏严,
+        # 如果标准匹配为空, 用宽松 margin 兜底 (最高分≥0.4 且领先次选≥0.15)
+        if not speaker_matches:
+            speaker_matches = _voiceprint_fallback_match(rec, sentence_info_for_vp)
         merged_segments = sentence_info_to_transcript_segments(
             sentence_info, hotwords_map, speaker_matches,
         )
