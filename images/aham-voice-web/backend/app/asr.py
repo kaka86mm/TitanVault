@@ -583,7 +583,8 @@ def transcribe_with_moss(recording_id: str, user: dict[str, Any]) -> dict[str, A
     """用 MOSS-Transcribe-Diarize 做端到端转写+说话人分离。
 
     输出跟 transcribe_recording 一样写入 transcript_segments 表。
-    不做声纹匹配 (MOSS 不输出 speaker embedding, S01 就是 S01)。
+    声纹匹配通过 _merge_moss_segments_for_voiceprint + _voiceprint_fallback_match 实现。
+    热词通过 prompt 引导 + 后置替换双轨生效。
     """
     import torch
 
