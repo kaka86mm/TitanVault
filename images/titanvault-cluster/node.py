@@ -210,25 +210,36 @@ def check_process_running(pattern: str) -> bool:
 
 
 def scan_local_models() -> list[dict]:
-    """扫描本地 GGUF 模型文件。
+    """扫描本地 GGUF 模型文件 (只保留推理模型)。
 
+    过滤掉: embedding/reranker/mmproj/vocab 等辅助文件。
     返回 [{name, path, size_gb}] 列表, 按大小降序。
     """
+    # 排除模式 (文件名包含这些关键词的跳过)
+    EXCLUDE = {"embed", "rerank", "mmproj", "vocab", "tokenizer", "clip"}
+
     models = []
     search_paths = [
         os.path.join(MODEL_DIR, "**", "*.gguf"),
-        "/data/models/**/*.gguf",
     ]
     seen = set()
     for pattern in search_paths:
         for path in glob.glob(pattern, recursive=True):
             if path in seen:
                 continue
+            basename = os.path.basename(path).lower()
+
+            # 排除非推理模型
+            if any(ex in basename for ex in EXCLUDE):
+                continue
+
             seen.add(path)
             try:
                 size = os.path.getsize(path) / 1024**3
-                name = os.path.basename(path)
-                # 清理文件名: 去掉 .gguf 后缀
+                # 排除太小的文件 (< 1GB 的不是推理模型)
+                if size < 1.0:
+                    continue
+                name = basename
                 if name.endswith(".gguf"):
                     name = name[:-5]
                 models.append({
