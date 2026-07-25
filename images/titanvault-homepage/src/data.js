@@ -43,7 +43,7 @@ export const services = [
   { name: 'LiteLLM',     icon: 'litellm',   desc: 'LLM 网关',                   port: 4000,  url: '/go/litellm', status: 'up', cat: 'AI' },
   { name: 'API 指南',    icon: 'api',       desc: 'API 端点+调用示例+健康检查',  port: 0,     url: '/api-guide/', status: 'up', cat: 'AI' },
   { name: 'Fast Research', icon: 'research', desc: 'QUEST-9B 深度研究+报告迭代',  port: 0,     url: '/research/', status: 'up', cat: 'AI' },
-  { name: 'TrendRadar',  icon: 'trendradar', desc: 'AI 舆情监控+热点雷达',       port: 8092,  url: '/go/trend',  status: 'up', cat: 'AI' },
+  { name: 'TrendRadar',  icon: 'trendradar', desc: 'AI 舆情监控 (配置:文件管理→trendradar/config)', port: 8092,  url: '/go/trend',  status: 'up', cat: 'AI' },
 ];
 
 // 分类元数据: cls 决定分类色系 (ai蓝/app紫/ops青/agent橙)

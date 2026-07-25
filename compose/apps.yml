@@ -146,7 +146,7 @@ services:
       EMAIL_SMTP_SERVER: ${TRENDRADAR_EMAIL_SMTP_SERVER:-}
       EMAIL_SMTP_PORT: ${TRENDRADAR_EMAIL_SMTP_PORT:-587}
     volumes:
-      - ${DATA_DIR:-/data}/trendradar/config:/app/config:ro
+      - ${DATA_DIR:-/data}/trendradar/config:/app/config
       - ${DATA_DIR:-/data}/trendradar/output:/app/output
     ports: ["8092:8092"]
     depends_on:
@@ -163,7 +163,7 @@ services:
       TZ: Asia/Shanghai
       MCP_PORT: "3333"
     volumes:
-      - ${DATA_DIR:-/data}/trendradar/config:/app/config:ro
+      - ${DATA_DIR:-/data}/trendradar/config:/app/config
       - ${DATA_DIR:-/data}/trendradar/output:/app/output
     networks: [mozin]
     logging: *id001
