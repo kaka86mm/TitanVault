@@ -127,12 +127,15 @@ def get_gpu_info() -> tuple[str, str, float, float]:
     except Exception:
         pass
 
-    # GTT 统一内存: 尝试 /proc/meminfo 的 MemTotal 作为近似
+    # GTT 统一内存: Strix Halo 统一内存架构, GTT 显存 = 系统内存
+    # 注意: vram_used 只报 GPU 进程占用, 不是全部已用 RAM (否则 orchestrator 会过度分配)
     try:
         import psutil
         mem = psutil.virtual_memory()
-        # Strix Halo 统一内存: MemTotal ≈ 显存总量
-        return "AMD APU (Unified Memory)", "GTT", mem.total / 1024**3, (mem.total - mem.available) / 1024**3
+        vram_total = mem.total / 1024**3
+        # 估算 GPU 占用: 查找 llama-server / rpc-server 进程的 RSS 之和
+        vram_used = _estimate_gpu_mem_usage()
+        return "AMD APU (Unified Memory)", "GTT", vram_total, vram_used
     except Exception:
         pass
 
@@ -149,6 +152,27 @@ def _read_gtt_vram() -> float:
         return psutil.virtual_memory().total / 1024**3
     except Exception:
         return 128.0  # 默认值
+
+
+def _estimate_gpu_mem_usage() -> float:
+    """估算 GPU 相关进程的显存/内存占用 (RSS 之和, GB)。
+
+    只统计 llama-server / rpc-server 进程, 避免把全部 RAM 算成 VRAM used。
+    """
+    try:
+        import psutil
+        total = 0.0
+        for proc in psutil.process_iter(["name", "cmdline", "rss"]):
+            try:
+                name = (proc.info.get("name") or "").lower()
+                cmdline = " ".join(proc.info.get("cmdline") or [])
+                if "llama-server" in name or "llama-rpc-server" in name or "llama-server" in cmdline:
+                    total += proc.info.get("rss", 0)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return total / 1024**3
+    except Exception:
+        return 0.0
 
 
 def get_ram_info() -> tuple[float, float]:
@@ -227,9 +251,11 @@ def collect_node_status(node_id: str, port: int, my_ip: str = "") -> NodeStatus:
     llama_available = os.path.exists(LLAMA_SERVER_BIN)
     rpc_available = os.path.exists(LLAMA_RPC_BIN)
 
-    # 检查服务运行状态
-    server_running = check_port_open(8082) or check_process_running("llama-server")
-    rpc_running = check_port_open(50052) or check_process_running("llama-rpc-server")
+    # 检查服务运行状态 (用端口检测, 不用 pgrep 避免 false positive)
+    rpc_port = int(os.environ.get("CLUSTER_RPC_PORT", "50052"))
+    deploy_port = int(os.environ.get("CLUSTER_DEPLOY_PORT", "8082"))
+    server_running = check_port_open(deploy_port)
+    rpc_running = check_port_open(rpc_port)
 
     # 扫描本地模型
     models = scan_local_models()

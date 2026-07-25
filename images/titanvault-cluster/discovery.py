@@ -114,11 +114,13 @@ class ClusterDiscovery:
         self.on_peer_found = on_peer_found
         self.on_peer_lost = on_peer_lost
 
-        self._zeroconf: Optional[Zeroconf] = None
+        self._zeroconf: Optional[AsyncZeroconf] = None
         self._service_info: Optional[ServiceInfo] = None
-        self._browser: Optional[ServiceBrowser] = None
+        self._browser: Optional[AsyncServiceBrowser] = None
         self._peers: dict[str, PeerNode] = {}  # node_id -> PeerNode
         self._lock = threading.Lock()
+        self._thread: Optional[threading.Thread] = None
+        self._ready: Optional[threading.Event] = None
         self._running = False
         self._cleanup_thread: Optional[threading.Thread] = None
         self._my_ip: Optional[str] = None
@@ -133,13 +135,12 @@ class ClusterDiscovery:
 
         self._my_ip = get_best_interface_ip()
 
-        # 在独立线程中初始化 zeroconf
-        import threading
+        # _running 必须在启动线程前设为 True, 否则线程的事件循环会立即退出
+        self._running = True
         self._ready = threading.Event()
         self._thread = threading.Thread(target=self._run_in_thread, daemon=True)
         self._thread.start()
         self._ready.wait(timeout=10)
-        self._running = True
 
         # 启动清理线程
         self._cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
@@ -178,6 +179,14 @@ class ClusterDiscovery:
             while self._running:
                 await asyncio.sleep(1)
 
+            # 清理: 注销服务 + 关闭 zeroconf
+            if self._browser:
+                self._browser.cancel()
+            if self._service_info and self._zeroconf:
+                await self._zeroconf.async_unregister_service(self._service_info)
+            if self._zeroconf:
+                await self._zeroconf.async_close()
+
         try:
             asyncio.run(_init())
         except Exception as e:
@@ -185,10 +194,12 @@ class ClusterDiscovery:
             self._ready.set()
 
     def stop(self):
-        """停止发现服务。"""
+        """停止发现服务: 清理 mDNS 注册 + 关闭 zeroconf + join 线程。"""
         self._running = False
-        # 线程会在 _running=False 后退出
-        logger.info("mDNS discovery stopping...")
+        # 等线程退出 (它会在下一次 asyncio.sleep(1) 后检测到 _running=False)
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5)
+        logger.info("mDNS discovery stopped")
 
     def get_peers(self) -> list[PeerNode]:
         """获取当前已发现的非过期对端节点列表。"""
@@ -206,8 +217,9 @@ class ClusterDiscovery:
         """发现新服务时调用 (async)。"""
         try:
             from zeroconf.asyncio import AsyncServiceInfo
-            info = await AsyncServiceInfo.async_request(zeroconf, type_, name, timeout=3000)
-            if not info:
+            info = AsyncServiceInfo(type_, name)
+            await info.async_request(zeroconf, timeout=3000)
+            if not info.info_from_cache() and not info.addresses:
                 return
 
             # 解析 IP

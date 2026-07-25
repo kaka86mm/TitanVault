@@ -47,7 +47,8 @@ LLAMA_CPP_DIR = os.environ.get("LLAMA_CPP_DIR", "/opt/llama.cpp")
 discovery: Optional[ClusterDiscovery] = None
 # 已连接的 WebSocket 客户端
 ws_clients: set[WebSocket] = set()
-# 当前部署
+# 部署状态 (加锁防止并发 deploy/undeploy 竞态)
+_state_lock = threading.Lock()
 current_deployment: Optional[DeploymentPlan] = None
 current_rpc_proc = None  # 本地的 rpc-server 进程 (worker 模式)
 current_server_proc = None  # 本地的 llama-server 进程 (master 模式)
@@ -217,6 +218,10 @@ async def api_deploy(req: Request):
     if not os.path.exists(model_path):
         raise HTTPException(400, f"Model file not found: {model_path}")
 
+    # 加锁防止并发 deploy
+    if not _state_lock.acquire(blocking=False):
+        raise HTTPException(409, "另一个部署操作正在进行中")
+
     # 先停止已有部署
     await api_undeploy()
 
@@ -271,6 +276,7 @@ async def api_deploy(req: Request):
         "data": {"deployed": current_server_proc is not None, "plan": plan.to_dict()},
     })
 
+    _state_lock.release()
     return {"deployed": current_server_proc is not None, "plan": plan.to_dict()}
 
 
@@ -363,7 +369,14 @@ async def api_proxy(path: str, request: Request):
             content=body, headers=headers,
             params=request.query_params,
         )
-    return JSONResponse(resp.json(), status_code=resp.status_code)
+    # 透传原始响应 (支持 SSE 流式 + JSON + 纯文本), 不强制 JSONResponse
+    from fastapi import Response
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers={k: v for k, v in resp.headers.items() if k.lower() not in ("transfer-encoding", "content-encoding")},
+        media_type=resp.headers.get("content-type"),
+    )
 
 
 # ============================================================================

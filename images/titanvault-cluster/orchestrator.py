@@ -83,10 +83,16 @@ def plan_deployment(
     # tensor split: 主节点 + 各 worker
     tensor_split = ",".join(str(s) for s in splits)
 
-    # workers 详情
+    # workers 详情 (层分配: 按比例分, 主节点拿剩余, 保证不出现负数)
     worker_details = []
+    remaining = total_layers
     for i, w in enumerate(workers):
-        worker_layers = round(total_layers * splits[i + 1] / sum(splits))
+        if i == len(workers) - 1:
+            # 最后一个 worker 拿剩余 (避免四舍五入误差)
+            worker_layers = max(0, remaining - max(1, total_layers - remaining))
+        else:
+            worker_layers = max(1, round(total_layers * splits[i + 1] / sum(splits)))
+        remaining -= worker_layers
         worker_details.append({
             "node_id": w["node_id"],
             "ip": w["ip"],
@@ -96,7 +102,7 @@ def plan_deployment(
             "vram_free_gb": w.get("vram_free_gb", 0),
         })
 
-    master_layers = total_layers - sum(wd["layers"] for wd in worker_details)
+    master_layers = max(1, total_layers - sum(wd["layers"] for wd in worker_details))
 
     return DeploymentPlan(
         model_path=model_path,
@@ -127,14 +133,15 @@ def start_rpc_server(port: int = RPC_PORT, host: str = "0.0.0.0") -> Optional[su
     try:
         proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             env={**os.environ, "LD_LIBRARY_PATH": LLAMA_CPP_DIR},
+            start_new_session=True,  # 独立进程组, stop 时 kill 整组
         )
         # 等待启动
         time.sleep(2)
         if proc.poll() is not None:
-            stderr = proc.stderr.read().decode()[:500]
+            stderr = proc.stderr.read().decode()[:500] if proc.stderr else ""
             logger.error(f"rpc-server failed to start: {stderr}")
             return None
         logger.info(f"rpc-server started (PID={proc.pid}, port={port})")
@@ -182,13 +189,14 @@ def start_distributed_server(
     try:
         proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             env={**os.environ, "LD_LIBRARY_PATH": LLAMA_CPP_DIR},
+            start_new_session=True,  # 独立进程组
         )
         time.sleep(3)
         if proc.poll() is not None:
-            stderr = proc.stderr.read().decode()[:500]
+            stderr = proc.stderr.read().decode()[:500] if proc.stderr else ""
             logger.error(f"llama-server failed to start: {stderr}")
             return None
         logger.info(f"Distributed llama-server started (PID={proc.pid}, port={port})")
@@ -199,17 +207,21 @@ def start_distributed_server(
 
 
 def stop_process(proc: Optional[subprocess.Popen]) -> bool:
-    """停止一个进程。"""
+    """停止一个进程及其整个进程组。"""
     if proc is None:
         return True
     try:
-        proc.terminate()
+        import signal
+        # kill 整个进程组 (start_new_session=True 创建的独立会话)
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         proc.wait(timeout=5)
         logger.info(f"Process stopped (PID={proc.pid})")
         return True
     except Exception:
         try:
-            proc.kill()
+            import signal
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            proc.wait(timeout=2)
             return True
         except Exception:
             return False

@@ -158,6 +158,13 @@ let clusterData = null;
 let selectedModel = null;
 let deployState = { deployed: false };
 
+// XSS 防护: 转义用户/peer 提供的文本
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = String(s ?? '');
+  return d.innerHTML;
+}
+
 // WebSocket
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -195,16 +202,16 @@ function renderCluster() {
     return `
     <div class="node-card ${n.is_self ? 'self' : ''}">
       <div class="node-role ${roleClass}">${roleText}</div>
-      <div class="node-name">${n.hostname} ${n.is_self ? '🏠' : '🔗'}</div>
-      <div class="node-ip">${n.ip}:${n.port} · ${n.node_id}</div>
+      <div class="node-name">${esc(n.hostname)} ${n.is_self ? '🏠' : '🔗'}</div>
+      <div class="node-ip">${esc(n.ip)}:${n.port} · ${esc(n.node_id)}</div>
       <div class="node-stats">
         <div class="stat">
           <div class="stat-label">GPU</div>
-          <div class="stat-value" style="font-size:12px">${n.gpu_name || 'N/A'}</div>
+          <div class="stat-value" style="font-size:12px">${esc(n.gpu_name || 'N/A')}</div>
         </div>
         <div class="stat">
           <div class="stat-label">角色</div>
-          <div class="stat-value" style="font-size:12px">${n.role_detail || roleText}</div>
+          <div class="stat-value" style="font-size:12px">${esc(n.role_detail || roleText)}</div>
         </div>
         <div class="stat">
           <div class="stat-label">VRAM ${n.vram_used_gb}/${n.vram_total_gb}GB</div>
@@ -238,10 +245,10 @@ async function loadModels() {
         : `<span class="model-badge badge-missing">未下载</span>`;
       return `
         <div class="model-item ${selectedModel === m.path ? 'selected' : ''}"
-             onclick="selectModel('${m.path}', ${i})">
+             data-path="${esc(m.path)}" data-idx="${i}" onclick="selectModel(this.dataset.path, ${i})">
           <div class="model-info">
-            <div class="model-name">${m.name}</div>
-            <div class="model-meta">${m.notes || ''} · ${m.layers || '?'}层 · 建议 ${m.recommended_vram_gb || '?'}GB VRAM</div>
+            <div class="model-name">${esc(m.name)}</div>
+            <div class="model-meta">${esc(m.notes || '')} · ${m.layers || '?'}层 · 建议 ${m.recommended_vram_gb || '?'}GB VRAM</div>
           </div>
           ${badge}
         </div>`;
