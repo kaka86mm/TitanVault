@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TitanVault Cluster — 分布式推理集群</title>
+<style>
+:root {
+  --bg: #0a0a0c; --surface: #16161c; --surface-2: #1e1e26; --border: #262630;
+  --fg: #f0f0f4; --fg-2: #a0a0b0; --muted: #68687a;
+  --accent: #3b9eff; --accent-dim: rgba(59,158,255,0.12);
+  --success: #22d37c; --success-dim: rgba(34,211,124,0.12);
+  --warn: #f5a623; --danger: #ef4444;
+  --radius: 10px; --radius-sm: 6px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg); color: var(--fg); line-height: 1.5; min-height: 100vh;
+}
+.header {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: white; padding: 20px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.header h1 { font-size: 20px; font-weight: 600; }
+.header .badge {
+  background: rgba(255,255,255,0.2); padding: 4px 12px;
+  border-radius: 20px; font-size: 13px; font-weight: 500;
+}
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+.section { margin-bottom: 32px; }
+.section-title {
+  font-size: 16px; font-weight: 600; color: var(--fg-2);
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.section-title .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+/* Node Grid */
+.nodes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.node-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px; position: relative;
+  transition: border-color 0.2s;
+}
+.node-card:hover { border-color: var(--accent); }
+.node-card.self { border-color: var(--accent); background: var(--accent-dim); }
+.node-role {
+  position: absolute; top: 12px; right: 12px;
+  padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.role-master { background: var(--success-dim); color: var(--success); }
+.role-worker { background: var(--accent-dim); color: var(--accent); }
+.role-idle { background: var(--surface-2); color: var(--muted); }
+.node-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.node-ip { font-size: 13px; color: var(--muted); font-family: monospace; margin-bottom: 12px; }
+.node-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat { background: var(--surface-2); border-radius: var(--radius-sm); padding: 8px 10px; }
+.stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+.stat-value { font-size: 14px; font-weight: 600; }
+.stat-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.stat-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+.fill-green { background: var(--success); }
+.fill-blue { background: var(--accent); }
+.fill-orange { background: var(--warn); }
+
+/* Model Selector */
+.model-list { display: grid; gap: 8px; }
+.model-item {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; transition: all 0.15s;
+}
+.model-item:hover { border-color: var(--accent); background: var(--surface-2); }
+.model-item.selected { border-color: var(--accent); background: var(--accent-dim); }
+.model-info { flex: 1; }
+.model-name { font-weight: 600; font-size: 14px; }
+.model-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.model-badge {
+  padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  margin-left: 8px;
+}
+.badge-available { background: var(--success-dim); color: var(--success); }
+.badge-missing { background: rgba(239,68,68,0.12); color: var(--danger); }
+
+/* Deployment Plan */
+.plan-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px; margin-top: 16px;
+}
+.plan-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.plan-row:last-child { border-bottom: none; }
+.plan-node { font-weight: 600; }
+.plan-layers { color: var(--accent); font-family: monospace; }
+
+/* Buttons */
+.btn {
+  padding: 10px 20px; border: none; border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: #2b80e0; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-danger { background: var(--danger); color: white; }
+.btn-success { background: var(--success); color: white; }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--fg-2); }
+
+/* Empty state */
+.empty { text-align: center; padding: 40px; color: var(--muted); }
+.connecting { text-align: center; padding: 60px 20px; color: var(--fg-2); }
+.spinner {
+  width: 32px; height: 32px; border: 3px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.flex { display: flex; align-items: center; gap: 12px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🔗 TitanVault Cluster</h1>
+  <span class="badge" id="clusterBadge">连接中...</span>
+</div>
+<div class="container">
+  <!-- Cluster Overview -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span> 集群节点</div>
+    <div id="nodesGrid" class="nodes-grid">
+      <div class="connecting"><div class="spinner"></div>正在发现集群节点...</div>
+    </div>
+  </div>
+
+  <!-- Model Deployment -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span> 部署模型</div>
+    <div id="deployStatus" style="margin-bottom:12px;"></div>
+    <div id="modelList" class="model-list">
+      <div class="connecting"><div class="spinner"></div>加载模型列表...</div>
+    </div>
+    <div id="planPreview"></div>
+    <div class="flex" style="margin-top:16px; gap:8px;">
+      <button class="btn btn-primary" id="deployBtn" onclick="deployModel()" disabled>部署</button>
+      <button class="btn btn-danger" id="undeployBtn" onclick="undeploy()" style="display:none;">停止部署</button>
+      <button class="btn btn-ghost" onclick="loadModels()">刷新模型</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let ws = null;
+let clusterData = null;
+let selectedModel = null;
+let deployState = { deployed: false };
+
+// WebSocket
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'cluster_status') {
+      clusterData = msg.data;
+      renderCluster();
+    } else if (msg.type === 'deployment_update') {
+      deployState = msg.data;
+      renderDeployStatus();
+    }
+  };
+  ws.onclose = () => setTimeout(connectWS, 3000);
+}
+connectWS();
+
+// Render cluster nodes
+function renderCluster() {
+  const grid = document.getElementById('nodesGrid');
+  const badge = document.getElementById('clusterBadge');
+  if (!clusterData || !clusterData.nodes) return;
+
+  badge.textContent = `${clusterData.node_count} 节点在线`;
+
+  grid.innerHTML = clusterData.nodes.map(n => {
+    const vramPct = n.vram_total_gb > 0 ? (n.vram_used_gb / n.vram_total_gb * 100) : 0;
+    const ramPct = n.ram_total_gb > 0 ? (n.ram_used_gb / n.ram_total_gb * 100) : 0;
+    const vramColor = vramPct > 80 ? 'fill-orange' : 'fill-green';
+    const ramColor = ramPct > 80 ? 'fill-orange' : 'fill-blue';
+    const roleClass = `role-${n.role}`;
+    const roleText = n.role === 'master' ? '主节点' : n.role === 'worker' ? '计算节点' : '空闲';
+
+    return `
+    <div class="node-card ${n.is_self ? 'self' : ''}">
+      <div class="node-role ${roleClass}">${roleText}</div>
+      <div class="node-name">${n.hostname} ${n.is_self ? '🏠' : '🔗'}</div>
+      <div class="node-ip">${n.ip}:${n.port} · ${n.node_id}</div>
+      <div class="node-stats">
+        <div class="stat">
+          <div class="stat-label">GPU</div>
+          <div class="stat-value" style="font-size:12px">${n.gpu_name || 'N/A'}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">角色</div>
+          <div class="stat-value" style="font-size:12px">${n.role_detail || roleText}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">VRAM ${n.vram_used_gb}/${n.vram_total_gb}GB</div>
+          <div class="stat-bar"><div class="stat-fill ${vramColor}" style="width:${vramPct}%"></div></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">RAM ${n.ram_used_gb}/${n.ram_total_gb}GB</div>
+          <div class="stat-bar"><div class="stat-fill ${ramColor}" style="width:${ramPct}%"></div></div>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+        ${n.llama_cpp_available ? '✅' : '❌'} llama.cpp
+        ${n.rpc_server_available ? '· ✅ RPC' : '· ❌ RPC'}
+        ${n.llama_server_running ? '· 🟢 server' : ''}
+        ${n.rpc_server_running ? '· 🟢 rpc' : ''}
+        · ${n.local_models ? n.local_models.length : 0} 模型
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Load models
+async function loadModels() {
+  try {
+    const resp = await fetch('/api/models');
+    const data = await resp.json();
+    const list = document.getElementById('modelList');
+    list.innerHTML = data.models.map((m, i) => {
+      const badge = m.available_locally
+        ? `<span class="model-badge badge-available">本地 ${m.size_gb}GB</span>`
+        : `<span class="model-badge badge-missing">未下载</span>`;
+      return `
+        <div class="model-item ${selectedModel === m.path ? 'selected' : ''}"
+             onclick="selectModel('${m.path}', ${i})">
+          <div class="model-info">
+            <div class="model-name">${m.name}</div>
+            <div class="model-meta">${m.notes || ''} · ${m.layers || '?'}层 · 建议 ${m.recommended_vram_gb || '?'}GB VRAM</div>
+          </div>
+          ${badge}
+        </div>`;
+    }).join('');
+    window._models = data.models;
+  } catch (e) {
+    document.getElementById('modelList').innerHTML = `<div class="empty">加载失败: ${e}</div>`;
+  }
+}
+
+function selectModel(path, idx) {
+  selectedModel = path;
+  document.querySelectorAll('.model-item').forEach((el, i) => {
+    el.classList.toggle('selected', i === idx);
+  });
+  // Preview deployment plan
+  previewPlan(path);
+  document.getElementById('deployBtn').disabled = false;
+}
+
+async function previewPlan(path) {
+  try {
+    const resp = await fetch('/api/plan', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({model_path: path})
+    });
+    const plan = await resp.json();
+    const workers = plan.workers.map(w =>
+      `<div class="plan-row">
+         <span class="plan-node">🔗 ${w.node_id} (${w.ip})</span>
+         <span class="plan-layers">${w.layers}层 · VRAM ${w.vram_free_gb}GB · split ${w.tensor_split}</span>
+       </div>`
+    ).join('');
+    document.getElementById('planPreview').innerHTML = `
+      <div class="plan-box">
+        <div style="font-weight:600;margin-bottom:8px;">部署方案预览</div>
+        <div class="plan-row">
+          <span class="plan-node">🏠 ${plan.master_node_id} (主节点, 本地)</span>
+          <span class="plan-layers">${plan.master_local_layers}层</span>
+        </div>
+        ${workers}
+        <div class="plan-row">
+          <span style="color:var(--muted)">--rpc ${plan.rpc_endpoints || '(无远程)'}</span>
+          <span class="plan-layers">-ts ${plan.tensor_split} · -ngl ${plan.ngl}</span>
+        </div>
+      </div>`;
+  } catch (e) {
+    document.getElementById('planPreview').innerHTML = '';
+  }
+}
+
+async function deployModel() {
+  if (!selectedModel) return;
+  const btn = document.getElementById('deployBtn');
+  btn.disabled = true; btn.textContent = '部署中...';
+  try {
+    const resp = await fetch('/api/deploy', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({model_path: selectedModel})
+    });
+    const result = await resp.json();
+    if (!result.deployed) {
+      alert('部署失败, 请检查日志');
+    }
+  } catch (e) {
+    alert('部署出错: ' + e);
+  }
+  btn.disabled = false; btn.textContent = '部署';
+}
+
+async function undeploy() {
+  await fetch('/api/undeploy', {method: 'POST'});
+}
+
+function renderDeployStatus() {
+  const el = document.getElementById('deployStatus');
+  const btn = document.getElementById('undeployBtn');
+  if (deployState.deployed) {
+    el.innerHTML = `<div style="background:var(--success-dim);color:var(--success);padding:8px 16px;border-radius:6px;">
+      ✅ 集群推理服务运行中 · API: http://${location.hostname}:${deployState.plan ? '8082' : '8082'}/v1
+    </div>`;
+    btn.style.display = '';
+  } else {
+    el.innerHTML = '';
+    btn.style.display = 'none';
+  }
+}
+
+// Init
+loadModels();
+</script>
+</body>
+</html>

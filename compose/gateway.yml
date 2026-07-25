@@ -149,6 +149,30 @@ services:
     networks: [mozin]
     logging: *id001
 
+  # === TitanVault Cluster: 分布式推理编排 (P2P, mDNS 自动发现) ===
+  # 多台 Strix Halo 通过 USB4/局域网直连, 自动发现组网, 选模型一键部署。
+  # 每节点运行一个 agent, 通过 mDNS (_titanvault-cluster._tcp.local.) 发现对端。
+  # 部署模型时: 远程启动 llama-rpc-server (worker) + 本地启动 llama-server --rpc (master)。
+  # 需要 llama.cpp 带 GGML_RPC=ON 编译 (build.sh 已支持)。
+  titanvault-cluster:
+    build: ../images/titanvault-cluster
+    image: mozin/titanvault-cluster:latest
+    profiles: [gateway]
+    restart: unless-stopped
+    environment:
+      CLUSTER_NODE_ID: "${CLUSTER_NODE_ID:-}"
+      CLUSTER_AGENT_PORT: "8094"
+      MODEL_DIR: /data/models
+      LLAMA_CPP_DIR: /opt/llama.cpp
+    volumes:
+      # 读取模型目录 (扫描可用 GGUF)
+      - ${DATA_DIR:-/data}/models:/data/models:ro
+      # 读取 llama.cpp 二进制 (启动 llama-server / rpc-server)
+      - /opt/llama.cpp:/opt/llama.cpp:ro
+    # host 网络: mDNS 发现 + 访问宿主 llama.cpp 进程
+    network_mode: host
+    logging: *id001
+
 networks:
   mozin:
     driver: bridge
