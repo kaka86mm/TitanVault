@@ -113,6 +113,61 @@ services:
     networks: [mozin]
     logging: *id001
 
+  # === TrendRadar: AI 舆情监控/热点雷达 (GPL-3.0) ===
+  # 聚合 11+ 平台热榜 + RSS, 关键词/AI 筛选, AI 分析简报多渠道推送。
+  # 与 Fast Research 互补: TrendRadar 持续被动监控, Fast Research 按需深度研究。
+  # 验证: wantcat/trendradar:latest (Docker Hub), wantcat/trendradar-mcp:latest
+  # 配置: ${DATA_DIR}/trendradar/config/config.yaml (热榜源/RSS/关键词/AI 筛选)
+  trendradar:
+    image: wantcat/trendradar:latest
+    profiles: [apps]
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      WEBSERVER_PORT: "8092"
+      # AI 分析走发行版 LiteLLM (复用本机 35B)
+      AI_ANALYSIS_ENABLED: "true"
+      AI_API_KEY: ${LITELLM_MASTER_KEY:-}
+      AI_API_BASE: http://litellm:4000/v1
+      AI_MODEL: openai/${LLM_MODEL_NAME:-Qwen3.6-35B-A3B}
+      # 定时抓取: 每 30 分钟
+      CRON_SCHEDULE: "*/30 * * * *"
+      RUN_MODE: cron
+      IMMEDIATE_RUN: "true"
+      # 通知渠道 (留空=不推送, 用户按需在 config 或 .env 配置)
+      FEISHU_WEBHOOK_URL: ${TRENDRADAR_FEISHU_WEBHOOK:-}
+      TELEGRAM_BOT_TOKEN: ${TRENDRADAR_TELEGRAM_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TRENDRADAR_TELEGRAM_CHAT:-}
+      DINGTALK_WEBHOOK_URL: ${TRENDRADAR_DINGTALK_WEBHOOK:-}
+      WEWORK_WEBHOOK_URL: ${TRENDRADAR_WEWORK_WEBHOOK:-}
+      EMAIL_FROM: ${TRENDRADAR_EMAIL_FROM:-}
+      EMAIL_PASSWORD: ${TRENDRADAR_EMAIL_PASSWORD:-}
+      EMAIL_TO: ${TRENDRADAR_EMAIL_TO:-}
+      EMAIL_SMTP_SERVER: ${TRENDRADAR_EMAIL_SMTP_SERVER:-}
+      EMAIL_SMTP_PORT: ${TRENDRADAR_EMAIL_SMTP_PORT:-587}
+    volumes:
+      - ${DATA_DIR:-/data}/trendradar/config:/app/config:ro
+      - ${DATA_DIR:-/data}/trendradar/output:/app/output
+    ports: ["8092:8092"]
+    depends_on:
+      - litellm
+    networks: [mozin]
+    logging: *id001
+
+  # TrendRadar MCP Server (AI 对话分析历史数据, 可注册到 mcpjungle)
+  trendradar-mcp:
+    image: wantcat/trendradar-mcp:latest
+    profiles: [apps]
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MCP_PORT: "3333"
+    volumes:
+      - ${DATA_DIR:-/data}/trendradar/config:/app/config:ro
+      - ${DATA_DIR:-/data}/trendradar/output:/app/output
+    networks: [mozin]
+    logging: *id001
+
 networks:
   mozin:
     driver: bridge

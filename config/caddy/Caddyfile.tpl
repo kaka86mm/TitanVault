@@ -47,6 +47,9 @@
 		reverse_proxy fast-research:8099
 	}
 
+	# TrendRadar (AI 舆情监控/热点雷达) — 独立端口, 跟 filebrowser/searxng 一致
+	redir /go/trend http://{host}:8092 permanent
+
 	# MetacubeXd — mihomo 代理管理面板 (Nuxt/Nitro server)
 	# 用 handle (不剥前缀): Nitro 设了 NUXT_APP_BASE_URL=/metacube/, 需保留前缀匹配路由。
 	# 面板连接 mihomo API 时, 后端地址填: http://<host-ip>:9090 + secret
