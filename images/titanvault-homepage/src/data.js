@@ -37,7 +37,7 @@ export const services = [
   { name: 'uptime-kuma', icon: 'kuma',      desc: '服务监控+告警',              port: 3001,  url: '/go/kuma',   status: 'up', cat: 'Ops' },
   { name: 'Glances',     icon: 'glances',   desc: '系统监控',                   port: 61208, url: '/go/glances', status: 'up', cat: 'Ops' },
   { name: 'MetacubeXd',  icon: 'metacube',  desc: 'mihomo 代理管理面板',         port: 0,     url: '/metacube/', status: 'up', cat: 'Ops' },
-  { name: 'Hermes',      icon: 'hermes',    desc: 'AI agent (Nous)',            port: 9119,  url: '/go/hermes', status: 'up', cat: 'Agent' },
+  { name: 'Hermes Studio', icon: 'hermes',    desc: 'AI agent + MoA 多模型聚合',   port: 6060,  url: '/go/studio', status: 'up', cat: 'Agent' },
   { name: 'OpenSquilla', icon: 'opensquilla', desc: 'token 高效 agent',        port: 18791, url: '/go/opensquilla', status: 'up', cat: 'Agent' },
   { name: 'Open Design', icon: 'opendesign', desc: '设计工具',                  port: 7456,  url: '/go/design', status: 'up', cat: 'Agent' },
   { name: 'Next AI Draw',icon: 'nextdraw',  desc: 'AI 画图',                    port: 4733,  url: '/go/draw',   status: 'up', cat: 'Agent' },
