@@ -23,6 +23,7 @@ export const svgIcons = {
   research: { color: "#3b9eff", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>` },
   trendradar: { color: "#EF4444", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>` },
   cluster: { color: "#10B981", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/></svg>` },
+  ntfy: { color: "#6366F1", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>` },
   metacube: { color: "#FF6B35", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7v10l10 5 10-5V7z"/><path d="M2 7l10 5 10-5M12 22V12"/></svg>` },
 };
 
@@ -46,6 +47,7 @@ export const services = [
   { name: 'Fast Research', icon: 'research', desc: 'QUEST-9B 深度研究+报告迭代',  port: 0,     url: '/research/', status: 'up', cat: 'AI' },
   { name: 'TrendRadar',  icon: 'trendradar', desc: 'AI 舆情监控 (配置:文件管理→trendradar/config)', port: 8092,  url: '/go/trend',  status: 'up', cat: 'AI' },
   { name: 'Cluster',     icon: 'cluster',   desc: '分布式推理集群 (双机互联)',      port: 8094,  url: '/go/cluster', status: 'up', cat: 'AI' },
+  { name: 'ntfy',        icon: 'ntfy',      desc: '推送通知服务器 (手机/桌面)',     port: 8093,  url: '/go/ntfy',   status: 'up', cat: 'Ops' },
 ];
 
 // 分类元数据: cls 决定分类色系 (ai蓝/app紫/ops青/agent橙)

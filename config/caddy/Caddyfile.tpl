@@ -53,6 +53,12 @@
 	# TitanVault Cluster (分布式推理集群) — 独立端口, host 网络
 	redir /go/cluster http://{host}:8094 permanent
 
+	# ntfy (自托管推送通知) — 反代到容器
+	handle /ntfy/* {
+		reverse_proxy ntfy:80
+	}
+	redir /go/ntfy http://{host}:8093 permanent
+
 	# MetacubeXd — mihomo 代理管理面板 (Nuxt/Nitro server)
 	# 用 handle (不剥前缀): Nitro 设了 NUXT_APP_BASE_URL=/metacube/, 需保留前缀匹配路由。
 	# 面板连接 mihomo API 时, 后端地址填: http://<host-ip>:9090 + secret

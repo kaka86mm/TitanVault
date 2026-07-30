@@ -168,6 +168,22 @@ services:
     networks: [mozin]
     logging: *id001
 
+  # === ntfy: 自托管推送通知服务器 (Apache-2.0) ===
+  # HTTP pub/sub 通知总线: 任何组件用 curl 即可发通知到手机/桌面。
+  # TrendRadar/Fast Research/Hermes/aham-voice-web 均可推送。
+  # Android 无需 Google Play (UnifiedPush), 内置 Web UI, 支持附件。
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    profiles: [apps]
+    restart: unless-stopped
+    command: serve --config /etc/ntfy/server.yml
+    ports: ["8093:80"]
+    volumes:
+      - ${DATA_DIR:-/data}/ntfy/cache:/var/cache
+      - ${DATA_DIR:-/data}/ntfy/etc:/etc/ntfy
+    networks: [mozin]
+    logging: *id001
+
 networks:
   mozin:
     driver: bridge
